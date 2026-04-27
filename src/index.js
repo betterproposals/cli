@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import { Command } from 'commander';
+const program = new Command();
+
+program
+    .name('betterproposals')
+    .description('Official CLI for Better Proposals')
+    .version('0.0.1');
+
+program.parse(process.argv);
