@@ -1,5 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { Command } from 'commander';
+import { login } from './auth.js';
+
 const program = new Command();
 
 program
@@ -10,9 +12,13 @@ program
 program
     .command('login')
     .description('Authenticate the CLI with your Better Proposals account')
-    .action(() => {
-        console.log('Login command executed');
-        // Auth logic here
+    .action(async () => {
+        try {
+            await login();
+        } catch (err) {
+            console.error('Login failed:', err.message);
+            process.exit(1);
+        }
     });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);
