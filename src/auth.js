@@ -10,6 +10,30 @@ const NAME = 'betterproposals-token';
 // redirects back to our local callback.
 const LOGIN_BASE = 'https://localdev.betterproposals/2/cli/login'; //TODO: Temporary URL
 
+// Page shown in the browser when the user clicks Cancel on the BP login
+// screen. Mirrors the success page.
+const CANCELLED_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+<title>Login cancelled - Better Proposals</title>
+<link rel="preconnect" href="https://use.typekit.net">
+<link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
+</head>
+<body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+
+<div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
+    <div style="margin-bottom:32px;">
+        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
+    </div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">Login cancelled</div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">No problem. You can close this tab and re-run the CLI command whenever you're ready.</div>
+</div>
+
+</body>
+</html>`;
+
 /**
  * Browser-based login handshake.
  *
@@ -52,12 +76,25 @@ export async function login() {
 
             const returnedState = url.searchParams.get('state');
             const token = url.searchParams.get('token');
+            const errorParam = url.searchParams.get('error');
 
-            // CSRF check: if the state doesn't match, someone other than
-            // our login flow hit this endpoint. Bail before touching the token.
+            // CSRF check first; applies to BOTH the success and the cancel
+            // path, since both echo `state` back to us.
             if (returnedState !== state) {
                 reject(new Error('State mismatch; possible CSRF attack'));
                 return new Response('State mismatch.', {status: 400});
+            }
+
+            // User clicked "Cancel" on the BP login page. The web app
+            // redirects here with `?error=access_denied` so the CLI doesn't
+            // hang forever waiting on a callback that will never come.
+            // Resolve with `null` to signal cancellation; login() handles
+            // the no-token case cleanly without throwing.
+            if (errorParam === 'access_denied') {
+                resolve(null);
+                return new Response(CANCELLED_HTML, {
+                    headers: {'Content-Type': 'text/html', 'Connection': 'close'},
+                });
             }
 
             if (!token) {
@@ -111,11 +148,18 @@ export async function login() {
     let token;
     try {
         // Suspend until /callback fires (or the handler rejects on bad input).
+        // `token` is null if the user clicked Cancel on the BP login page.
         token = await done;
     } finally {
         // Graceful stop: stops accepting new connections and resolves only
         // once active ones have drained.
         await server.stop();
+    }
+
+    // Cancellation path: nothing to store, nothing went wrong. Exit quietly.
+    if (token === null) {
+        console.log('Login cancelled.');
+        return;
     }
 
     // Persist to the OS keychain. Subsequent CLI commands will read this back
