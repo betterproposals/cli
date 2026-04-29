@@ -1,15 +1,31 @@
-# betterproposals-cli
+# Better Proposals CLI (Developer Setup)
+_(This will be user-facing CLI documentation later on)_
 
-To install dependencies:
+## Prerequisites
+
+- [Bun](https://bun.com) v1.3+
+
+## Install
 
 ```bash
 bun install
+bun link
 ```
 
-To run:
+`bun link` registers the package globally so the `betterproposals` binary is available anywhere in your shell.
+
+## Run without installing
 
 ```bash
-bun run index.ts
+bun src/index.js <command>
 ```
 
-This project was created using `bun init` in bun v1.3.13. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+## Commands
+
+### `login`
+
+Opens a browser window to authenticate with your Better Proposals account. The token is stored in the OS keychain and reused by subsequent commands.
+
+```bash
+betterproposals login
+```
