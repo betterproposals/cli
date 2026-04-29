@@ -76,20 +76,17 @@ export async function login() {
                 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
                 <title>Authenticated - Better Proposals</title>
+                <link rel="preconnect" href="https://use.typekit.net">
+                <link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
                 </head>
-                <body style="margin:0; padding:0; background:#ffffff; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+                <body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
                 
-                <div style="display:flex; align-items:center; justify-content:center; min-height:100vh; padding:40px 20px; box-sizing:border-box;">
-                    <div style="text-align:center; max-width:480px; width:100%; margin:30px auto 20px; padding-bottom:30px;">
-                
-                        <div style="margin-bottom:32px;">
-                            <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:240px;" />
-                        </div>
-                
-                        <div style="color:#333333; font-size:1.25rem; font-weight:600; margin-bottom:10px;">You're logged in!</div>
-                        <div style="color:#959BA6; font-size:1rem; line-height:1.5; margin-bottom:0;">You've successfully authenticated with the Better Proposals CLI. You can close this tab and return to your terminal.</div>
-                
+                <div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
+                    <div style="margin-bottom:32px;">
+                        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
                     </div>
+                    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">You're logged in!</div>
+                    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">You've successfully authenticated with the Better Proposals CLI. You can close this tab and return to your terminal.</div>
                 </div>
                 
                 </body>
