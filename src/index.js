@@ -46,4 +46,40 @@ documentsCmd
         }
     });
 
+documentsCmd
+    .command('create')
+    .description('Create a new document')
+    .requiredOption('-c, --company <value>', 'Company ID or name (creates new if name not found)')
+    .option('--cover <id>', 'Cover ID')
+    .option('--template <id>', 'Template ID to copy from')
+    .option('--document-type <value>', 'Document type ID or name')
+    .option('--brand <id>', 'Brand ID')
+    .option('--currency <code>', 'Currency (3-letter code, e.g. USD)')
+    .option('--tax <value>', 'Enable tax (takes from default brand if omitted)')
+    .option('--tax-label <label>', 'Tax label')
+    .option('--tax-amount <amount>', 'Tax amount')
+    .option('--contacts <json>', 'Contacts as JSON array, e.g. \'[{"FirstName":"Jane","Email":"jane@example.com"}]\'')
+    .option('--merge-tags <json>', 'Merge tags as JSON array, e.g. \'[{"tag":"my_tag","value":"My Value"}]\'')
+    .action(async (opts) => {
+        try {
+            const data = await documents.create({
+                company: opts.company,
+                cover: opts.cover,
+                template: opts.template,
+                documentType: opts.documentType,
+                brand: opts.brand,
+                currency: opts.currency,
+                tax: opts.tax,
+                taxLabel: opts.taxLabel,
+                taxAmount: opts.taxAmount,
+                contacts: opts.contacts,
+                mergeTags: opts.mergeTags,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
 await program.parseAsync(process.argv);
