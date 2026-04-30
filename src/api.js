@@ -74,6 +74,22 @@ export const documents = {
         return request('GET', '/proposal/count');
     },
 
+    createCover({ brandId, coverName, bgColour, headline, subheader, textColour, textAlign, buttonStyle, buttonText } = {}) {
+        return request('POST', '/proposal/cover/create', {
+            body: {
+                BrandID: brandId,
+                CoverName: coverName,
+                BGColour: bgColour,
+                Headline: headline,
+                Subheader: subheader,
+                TextColour: textColour,
+                TextAlign: textAlign,
+                ButtonStyle: buttonStyle,
+                ButtonText: buttonText,
+            },
+        });
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {

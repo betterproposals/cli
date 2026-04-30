@@ -47,6 +47,38 @@ documentsCmd
     });
 
 documentsCmd
+    .command('create-cover')
+    .description('Create a document cover')
+    .option('--brand-id <id>', 'Brand ID')
+    .option('--cover-name <name>', 'Cover name (default: Untitled)')
+    .option('--bg-colour <hex>', 'Background colour (default: 111111)')
+    .option('--headline <text>', 'Headline text')
+    .option('--subheader <text>', 'Subheader text')
+    .option('--text-colour <hex>', 'Text colour (default: ffffff)')
+    .option('--text-align <align>', 'Text alignment (default: left)')
+    .option('--button-style <style>', 'Button style (default: round)')
+    .option('--button-text <text>', 'Button text')
+    .action(async (opts) => {
+        try {
+            const data = await documents.createCover({
+                brandId: opts.brandId,
+                coverName: opts.coverName,
+                bgColour: opts.bgColour,
+                headline: opts.headline,
+                subheader: opts.subheader,
+                textColour: opts.textColour,
+                textAlign: opts.textAlign,
+                buttonStyle: opts.buttonStyle,
+                buttonText: opts.buttonText,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
     .command('count')
     .description('Get total document count')
     .action(async () => {
