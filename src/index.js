@@ -47,6 +47,19 @@ documentsCmd
     });
 
 documentsCmd
+    .command('count')
+    .description('Get total document count')
+    .action(async () => {
+        try {
+            const data = await documents.count();
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
     .command('get <id>')
     .description('Get document details')
     .action(async (id) => {

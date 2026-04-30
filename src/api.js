@@ -70,6 +70,10 @@ export const documents = {
         return request('GET', `/proposal/${id}`);
     },
 
+    count() {
+        return request('GET', '/proposal/count');
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {
