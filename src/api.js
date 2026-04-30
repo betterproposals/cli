@@ -66,6 +66,10 @@ export const documents = {
         return request('GET', '/proposal/paid', { params: { page, per_page: perPage, type } });
     },
 
+    get(id) {
+        return request('GET', `/proposal/${id}`);
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {

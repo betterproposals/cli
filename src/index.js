@@ -47,6 +47,19 @@ documentsCmd
     });
 
 documentsCmd
+    .command('get <id>')
+    .description('Get document details')
+    .action(async (id) => {
+        try {
+            const data = await documents.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
     .command('paid')
     .description('List paid documents')
     .option('-p, --page <number>', 'Page number', '1')
