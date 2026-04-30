@@ -58,6 +58,10 @@ export const documents = {
         return request('GET', '/proposal/sent', { params: { page, per_page: perPage, type } });
     },
 
+    listSigned({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/signed', { params: { page, per_page: perPage, type } });
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {
