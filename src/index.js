@@ -27,8 +27,8 @@ const documentsCmd = program
     .description('Manage documents');
 
 documentsCmd
-    .command('list')
-    .description('List documents')
+    .command('all')
+    .description('List all documents')
     .option('-p, --page <number>', 'Page number', '1')
     .option('-n, --per-page <number>', 'Results per page', '10')
     .option('-t, --type <number>', 'Document type filter')
