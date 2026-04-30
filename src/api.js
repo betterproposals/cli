@@ -46,6 +46,50 @@ export const documents = {
         return request('GET', '/proposal/', { params: { page, per_page: perPage, type } });
     },
 
+    listNew({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/new', { params: { page, per_page: perPage, type } });
+    },
+
+    listOpened({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/opened', { params: { page, per_page: perPage, type } });
+    },
+
+    listSent({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/sent', { params: { page, per_page: perPage, type } });
+    },
+
+    listSigned({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/signed', { params: { page, per_page: perPage, type } });
+    },
+
+    listPaid({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/paid', { params: { page, per_page: perPage, type } });
+    },
+
+    get(id) {
+        return request('GET', `/proposal/${id}`);
+    },
+
+    count() {
+        return request('GET', '/proposal/count');
+    },
+
+    createCover({ brandId, coverName, bgColour, headline, subheader, textColour, textAlign, buttonStyle, buttonText } = {}) {
+        return request('POST', '/proposal/cover/create', {
+            body: {
+                BrandID: brandId,
+                CoverName: coverName,
+                BGColour: bgColour,
+                Headline: headline,
+                Subheader: subheader,
+                TextColour: textColour,
+                TextAlign: textAlign,
+                ButtonStyle: buttonStyle,
+                ButtonText: buttonText,
+            },
+        });
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {

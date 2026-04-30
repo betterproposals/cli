@@ -27,14 +27,172 @@ const documentsCmd = program
     .description('Manage documents');
 
 documentsCmd
-    .command('list')
-    .description('List documents')
+    .command('all')
+    .description('List all documents')
     .option('-p, --page <number>', 'Page number', '1')
     .option('-n, --per-page <number>', 'Results per page', '10')
     .option('-t, --type <number>', 'Document type filter')
     .action(async (opts) => {
         try {
             const data = await documents.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('create-cover')
+    .description('Create a document cover')
+    .option('--brand-id <id>', 'Brand ID')
+    .option('--cover-name <name>', 'Cover name (default: Untitled)')
+    .option('--bg-colour <hex>', 'Background colour (default: 111111)')
+    .option('--headline <text>', 'Headline text')
+    .option('--subheader <text>', 'Subheader text')
+    .option('--text-colour <hex>', 'Text colour (default: ffffff)')
+    .option('--text-align <align>', 'Text alignment (default: left)')
+    .option('--button-style <style>', 'Button style (default: round)')
+    .option('--button-text <text>', 'Button text')
+    .action(async (opts) => {
+        try {
+            const data = await documents.createCover({
+                brandId: opts.brandId,
+                coverName: opts.coverName,
+                bgColour: opts.bgColour,
+                headline: opts.headline,
+                subheader: opts.subheader,
+                textColour: opts.textColour,
+                textAlign: opts.textAlign,
+                buttonStyle: opts.buttonStyle,
+                buttonText: opts.buttonText,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('count')
+    .description('Get total document count')
+    .action(async () => {
+        try {
+            const data = await documents.count();
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('get <id>')
+    .description('Get document details')
+    .action(async (id) => {
+        try {
+            const data = await documents.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('paid')
+    .description('List paid documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listPaid({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('signed')
+    .description('List signed documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listSigned({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('sent')
+    .description('List sent documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listSent({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('opened')
+    .description('List opened documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listOpened({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('new')
+    .description('List new documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listNew({
                 page: Number(opts.page),
                 perPage: Number(opts.perPage),
                 type: opts.type !== undefined ? Number(opts.type) : undefined,
