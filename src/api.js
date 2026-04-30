@@ -46,6 +46,10 @@ export const documents = {
         return request('GET', '/proposal/', { params: { page, per_page: perPage, type } });
     },
 
+    listNew({ page = 1, perPage = 10, type } = {}) {
+        return request('GET', '/proposal/new', { params: { page, per_page: perPage, type } });
+    },
+
     create({ company, cover, template, documentType, brand, currency, tax, taxLabel, taxAmount, contacts, mergeTags } = {}) {
         return request('POST', '/proposal/create', {
             body: {
