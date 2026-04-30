@@ -8,7 +8,7 @@ const NAME = 'betterproposals-token';
 
 // Web endpoint that issues a CLI token for the signed-in user and
 // redirects back to our local callback.
-const LOGIN_BASE = 'https://localdev.betterproposals/2/cli/login'; //TODO: Temporary URL
+const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login'; //TODO: Replace with production URL
 
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.

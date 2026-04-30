@@ -1,7 +1,6 @@
 import { getToken } from './auth.js';
 
-const BASE_URL = 'https://localapi.betterproposals'; // TODO: Replace with production URL
-const IS_LOCAL = BASE_URL.includes('localapi.');
+const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
 
 async function request(method, path, { params = {}, body } = {}) {
     const token = await getToken();
@@ -17,7 +16,6 @@ async function request(method, path, { params = {}, body } = {}) {
     const options = {
         method,
         headers: { Bptoken: token },
-        tls: IS_LOCAL ? { rejectUnauthorized: false } : undefined,
     };
 
     if (body) {
