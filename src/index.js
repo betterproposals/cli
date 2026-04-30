@@ -47,6 +47,26 @@ documentsCmd
     });
 
 documentsCmd
+    .command('paid')
+    .description('List paid documents')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('-t, --type <number>', 'Document type filter')
+    .action(async (opts) => {
+        try {
+            const data = await documents.listPaid({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type !== undefined ? Number(opts.type) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
     .command('signed')
     .description('List signed documents')
     .option('-p, --page <number>', 'Page number', '1')
