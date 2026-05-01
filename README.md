@@ -194,6 +194,36 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `document-types all`
+
+List all document types.
+
+```bash
+betterproposals document-types all [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
+### `document-types create`
+
+Create a new document type.
+
+```bash
+betterproposals document-types create --type-name <name> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--type-name <name>` | **(Required)** Document type name |
+| `--type-colour <hex>` | Colour hex code (default: `#01A3EF`) |
+
+---
+
 ### `templates get <id>`
 
 Get details for a single template.

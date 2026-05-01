@@ -41,6 +41,18 @@ async function request(method, path, { params = {}, body } = {}) {
     return data;
 }
 
+export const documentTypes = {
+    list({ page = 1, perPage = 10 } = {}) {
+        return request('GET', '/doctype', { params: { page, per_page: perPage } });
+    },
+
+    create({ typeName, typeColour } = {}) {
+        return request('POST', '/doctype/create', {
+            body: { TypeName: typeName, TypeColour: typeColour },
+        });
+    },
+};
+
 export const templates = {
     list({ page = 1, perPage = 10 } = {}) {
         return request('GET', '/template', { params: { page, per_page: perPage } });
