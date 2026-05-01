@@ -41,6 +41,22 @@ async function request(method, path, { params = {}, body } = {}) {
     return data;
 }
 
+export const companies = {
+    list({ page = 1, perPage = 10 } = {}) {
+        return request('GET', '/company', { params: { page, per_page: perPage } });
+    },
+
+    get(id) {
+        return request('GET', `/company/${id}`);
+    },
+
+    create({ companyName } = {}) {
+        return request('POST', '/company/create', {
+            body: { CompanyName: companyName },
+        });
+    },
+};
+
 export const documentTypes = {
     list({ page = 1, perPage = 10 } = {}) {
         return request('GET', '/doctype', { params: { page, per_page: perPage } });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login } from './auth.js';
-import { documents, documentTypes, templates } from './api.js';
+import { companies, documents, documentTypes, templates } from './api.js';
 
 const program = new Command();
 
@@ -233,6 +233,55 @@ documentsCmd
                 contacts: opts.contacts,
                 mergeTags: opts.mergeTags,
             });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const companiesCmd = program
+    .command('companies')
+    .description('Manage companies');
+
+companiesCmd
+    .command('all')
+    .description('List all companies')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await companies.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+companiesCmd
+    .command('get <id>')
+    .description('Get company details')
+    .action(async (id) => {
+        try {
+            const data = await companies.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+companiesCmd
+    .command('create')
+    .description('Create a new company')
+    .requiredOption('-n, --company-name <name>', 'Company name')
+    .action(async (opts) => {
+        try {
+            const data = await companies.create({ companyName: opts.companyName });
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {
             console.error(err.message);

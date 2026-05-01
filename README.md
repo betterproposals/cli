@@ -194,6 +194,45 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `companies all`
+
+List all companies.
+
+```bash
+betterproposals companies all [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
+### `companies get <id>`
+
+Get details for a single company.
+
+```bash
+betterproposals companies get <id>
+```
+
+---
+
+### `companies create`
+
+Create a new company.
+
+```bash
+betterproposals companies create --company-name <name>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-n, --company-name <name>` | **(Required)** Company name |
+
+---
+
 ### `document-types all`
 
 List all document types.
