@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login } from './auth.js';
-import { documents } from './api.js';
+import { documents, templates } from './api.js';
 
 const program = new Command();
 
@@ -232,6 +232,28 @@ documentsCmd
                 taxAmount: opts.taxAmount,
                 contacts: opts.contacts,
                 mergeTags: opts.mergeTags,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const templatesCmd = program
+    .command('templates')
+    .description('Manage templates');
+
+templatesCmd
+    .command('all')
+    .description('List all templates')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await templates.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
             });
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {
