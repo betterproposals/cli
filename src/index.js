@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login } from './auth.js';
-import { documents, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
 
 const program = new Command();
 
@@ -232,6 +232,178 @@ documentsCmd
                 taxAmount: opts.taxAmount,
                 contacts: opts.contacts,
                 mergeTags: opts.mergeTags,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const settingsCmd = program
+    .command('settings')
+    .description('Manage settings');
+
+settingsCmd
+    .command('get')
+    .description('Get account settings')
+    .action(async () => {
+        try {
+            const data = await settings.get();
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+settingsCmd
+    .command('brands')
+    .description('Get brand settings')
+    .action(async () => {
+        try {
+            const data = await settings.brand();
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+settingsCmd
+    .command('merge-tags')
+    .description('Get custom merge tags')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await settings.mergeTags({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const currenciesCmd = program
+    .command('currencies')
+    .description('Manage currencies');
+
+currenciesCmd
+    .command('all')
+    .description('List all currencies')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await currencies.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+currenciesCmd
+    .command('get <id>')
+    .description('Get currency details')
+    .action(async (id) => {
+        try {
+            const data = await currencies.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const companiesCmd = program
+    .command('companies')
+    .description('Manage companies');
+
+companiesCmd
+    .command('all')
+    .description('List all companies')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await companies.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+companiesCmd
+    .command('get <id>')
+    .description('Get company details')
+    .action(async (id) => {
+        try {
+            const data = await companies.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+companiesCmd
+    .command('create')
+    .description('Create a new company')
+    .requiredOption('-n, --company-name <name>', 'Company name')
+    .action(async (opts) => {
+        try {
+            const data = await companies.create({ companyName: opts.companyName });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const documentTypesCmd = program
+    .command('document-types')
+    .description('Manage document types');
+
+documentTypesCmd
+    .command('all')
+    .description('List all document types')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await documentTypes.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentTypesCmd
+    .command('create')
+    .description('Create a new document type')
+    .requiredOption('--type-name <name>', 'Document type name')
+    .option('--type-colour <hex>', 'Colour hex code (default: #01A3EF)')
+    .action(async (opts) => {
+        try {
+            const data = await documentTypes.create({
+                typeName: opts.typeName,
+                typeColour: opts.typeColour,
             });
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {
