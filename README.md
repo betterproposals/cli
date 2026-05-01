@@ -191,3 +191,28 @@ betterproposals documents create-cover [options]
 | `--text-align <align>` | Text alignment | `left` |
 | `--button-style <style>` | Button style | `round` |
 | `--button-text <text>` | Button text | `Start Reading Proposal` |
+
+---
+
+### `templates get <id>`
+
+Get details for a single template.
+
+```bash
+betterproposals templates get <id>
+```
+
+---
+
+### `templates all`
+
+List all templates.
+
+```bash
+betterproposals templates all [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page | `10` |

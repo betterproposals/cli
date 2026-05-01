@@ -41,6 +41,16 @@ async function request(method, path, { params = {}, body } = {}) {
     return data;
 }
 
+export const templates = {
+    list({ page = 1, perPage = 10 } = {}) {
+        return request('GET', '/template', { params: { page, per_page: perPage } });
+    },
+
+    get(id) {
+        return request('GET', `/template/${id}`);
+    },
+};
+
 export const documents = {
     list({ page = 1, perPage = 10, type } = {}) {
         return request('GET', '/proposal/', { params: { page, per_page: perPage, type } });
