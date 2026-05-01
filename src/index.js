@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login } from './auth.js';
-import { companies, documents, documentTypes, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, templates } from './api.js';
 
 const program = new Command();
 
@@ -233,6 +233,41 @@ documentsCmd
                 contacts: opts.contacts,
                 mergeTags: opts.mergeTags,
             });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const currenciesCmd = program
+    .command('currencies')
+    .description('Manage currencies');
+
+currenciesCmd
+    .command('all')
+    .description('List all currencies')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .action(async (opts) => {
+        try {
+            const data = await currencies.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+currenciesCmd
+    .command('get <id>')
+    .description('Get currency details')
+    .action(async (id) => {
+        try {
+            const data = await currencies.get(id);
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {
             console.error(err.message);

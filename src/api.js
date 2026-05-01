@@ -41,6 +41,16 @@ async function request(method, path, { params = {}, body } = {}) {
     return data;
 }
 
+export const currencies = {
+    list({ page = 1, perPage = 10 } = {}) {
+        return request('GET', '/currency', { params: { page, per_page: perPage } });
+    },
+
+    get(id) {
+        return request('GET', `/currency/${id}`);
+    },
+};
+
 export const companies = {
     list({ page = 1, perPage = 10 } = {}) {
         return request('GET', '/company', { params: { page, per_page: perPage } });

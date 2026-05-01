@@ -194,6 +194,31 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `currencies all`
+
+List all currencies.
+
+```bash
+betterproposals currencies all [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
+### `currencies get <id>`
+
+Get details for a single currency.
+
+```bash
+betterproposals currencies get <id>
+```
+
+---
+
 ### `companies all`
 
 List all companies.
