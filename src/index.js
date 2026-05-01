@@ -245,6 +245,19 @@ const templatesCmd = program
     .description('Manage templates');
 
 templatesCmd
+    .command('get <id>')
+    .description('Get template details')
+    .action(async (id) => {
+        try {
+            const data = await templates.get(id);
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+templatesCmd
     .command('all')
     .description('List all templates')
     .option('-p, --page <number>', 'Page number', '1')

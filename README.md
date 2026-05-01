@@ -194,6 +194,16 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `templates get <id>`
+
+Get details for a single template.
+
+```bash
+betterproposals templates get <id>
+```
+
+---
+
 ### `templates all`
 
 List all templates.
