@@ -41,6 +41,20 @@ async function request(method, path, { params = {}, body } = {}) {
     return data;
 }
 
+export const settings = {
+    get() {
+        return request('GET', '/settings');
+    },
+
+    brand() {
+        return request('GET', '/settings/brand');
+    },
+
+    mergeTags({ page = 1, perPage = 10 } = {}) {
+        return request('GET', '/settings/merge_tag', { params: { page, per_page: perPage } });
+    },
+};
+
 export const currencies = {
     list({ page = 1, perPage = 10 } = {}) {
         return request('GET', '/currency', { params: { page, per_page: perPage } });

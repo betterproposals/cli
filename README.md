@@ -194,6 +194,41 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `settings get`
+
+Get account settings.
+
+```bash
+betterproposals settings get
+```
+
+---
+
+### `settings brands`
+
+Get brand settings.
+
+```bash
+betterproposals settings brand
+```
+
+---
+
+### `settings merge-tags`
+
+Get custom merge tags.
+
+```bash
+betterproposals settings merge-tags [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
 ### `currencies all`
 
 List all currencies.
