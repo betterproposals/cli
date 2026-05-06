@@ -1,12 +1,18 @@
-import { getToken } from './auth.js';
+import { getAccessToken, refreshAccessToken } from './auth.js';
 
-const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
+// const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
+const BASE_URL = 'https://localapi.betterproposals:444'; // TODO: Replace with production URL
 
-async function request(method, path, { params = {}, body } = {}) {
-    const token = await getToken();
-    if (!token) {
-        throw new Error('Not authenticated. Run `betterproposals login` first.');
+function fetchOptions(url, options) {
+    const host = new URL(url).hostname;
+    if (host.endsWith('.betterproposals') || host === 'localhost') {
+        options.tls = { rejectUnauthorized: false };
     }
+    return options;
+}
+
+async function request(method, path, { params = {}, body } = {}, retry = true) {
+    const token = await getAccessToken();
 
     const url = new URL(path, BASE_URL);
     for (const [key, value] of Object.entries(params)) {
@@ -27,7 +33,12 @@ async function request(method, path, { params = {}, body } = {}) {
         options.body = form.toString();
     }
 
-    const response = await fetch(url.toString(), options);
+    const response = await fetch(url.toString(), fetchOptions(url.toString(), options));
+
+    if (response.status === 401 && retry) {
+        await refreshAccessToken();
+        return request(method, path, { params, body }, false);
+    }
 
     if (!response.ok) {
         throw new Error(`API error ${response.status}: ${response.statusText}`);
