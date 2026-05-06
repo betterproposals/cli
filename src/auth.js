@@ -3,8 +3,11 @@ import open from 'open';
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
 
-const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login'; //TODO: Replace with production URL
-const REFRESH_URL = 'https://cli.dev.betterproposals.io/2/cli/refresh'; //TODO: Replace with production URL
+const APP_BASE = 'https://cli.dev.betterproposals.io/2/cli/'; //TODO: Replace with production URL
+
+const LOGIN_BASE  = APP_BASE + 'login';   //TODO: Replace with production URL
+const TOKEN_URL   = APP_BASE + 'token';   //TODO: Replace with production URL
+const REFRESH_URL = APP_BASE + 'refresh'; //TODO: Replace with production URL
 
 const BLOCKED_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -70,6 +73,18 @@ export async function login() {
     // echo it back unchanged or we reject the callback.
     const state = crypto.randomUUID();
 
+    // PKCE (Proof Key for Code Exchange):
+    // Generate code_verifier (32 random bytes → base64url) and
+    // code_challenge (base64url(SHA-256(verifier))). The verifier never
+    // leaves this process; the challenge is sent to the server. Even if
+    // the auth code is intercepted, it's useless without the verifier.
+    const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+    const codeVerifier = btoa(String.fromCharCode(...verifierBytes))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
     // The callback request arrives on a different stack than this function,
     // so we bridge the two with a Promise that the fetch handler resolves
     // (or rejects) when /callback fires.
@@ -93,9 +108,8 @@ export async function login() {
             }
 
             const returnedState = url.searchParams.get('state');
-            const accessToken = url.searchParams.get('access_token');
-            const refreshToken = url.searchParams.get('refresh_token');
-            const errorParam = url.searchParams.get('error');
+            const code          = url.searchParams.get('code');
+            const errorParam    = url.searchParams.get('error');
 
             // CSRF check first; applies to BOTH the success and the cancel
             // path, since both echo `state` back to us.
@@ -119,69 +133,62 @@ export async function login() {
                 });
             }
 
-            if (!accessToken || !refreshToken) {
-                reject(new Error('Missing access_token or refresh_token in callback'));
-                return new Response('Missing tokens.', {status: 400});
+            if (!code) {
+                reject(new Error('Missing code in callback'));
+                return new Response('Missing code.', {status: 400});
             }
 
-            resolve({ access_token: accessToken, refresh_token: refreshToken });
+            resolve(code);
 
-            return new Response(
-                `<!DOCTYPE html>
-                <html lang="en">
-                <head>
-                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
-                <title>Authenticated - Better Proposals</title>
-                <link rel="preconnect" href="https://use.typekit.net">
-                <link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
-                </head>
-                <body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
-                
-                <div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
-                    <div style="margin-bottom:32px;">
-                        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
-                    </div>
-                    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">You're logged in!</div>
-                    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">You've successfully authenticated with the Better Proposals CLI. You can close this tab and return to your terminal.</div>
-                </div>
-                
-                </body>
-                </html>`,
-                // `Connection: close` tells the browser not to keep the
-                // socket alive after this response; important because we're
-                // about to shut the server down and don't want lingering
-                // keep-alive sockets to drain.
-                {headers: {'Content-Type': 'text/html', 'Connection': 'close'}}
-            );
+            // The browser sent this as a no-cors fetch; it ignores our response.
+            return new Response('OK', {headers: {'Connection': 'close'}});
         },
     });
 
     // Bun assigned a real port now that the listener is bound. Build the
     // login URL the browser will visit.
     const port = server.port;
-    const loginUrl = `${LOGIN_BASE}?port=${port}&state=${state}`;
+    const loginUrl = `${LOGIN_BASE}?port=${port}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
     console.log('Opening browser for authentication…');
     await open(loginUrl);
 
-    let result;
+    let code;
     try {
-        result = await done;
+        code = await done;
     } finally {
         await server.stop();
     }
 
-    if (result === null) {
+    if (code === null) {
         console.log('Login cancelled.');
         return;
     }
 
-    const creds = {
-        access_token: result.access_token,
-        refresh_token: result.refresh_token,
-    };
-    await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify(creds)});
+    // Exchange the auth code for tokens via a direct POST (no browser, no URLs, no history).
+    const form = new URLSearchParams();
+    form.set('code', code);
+    form.set('code_verifier', codeVerifier);
+
+    const response = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: form.toString(),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Token exchange failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.access_token || !data.refresh_token) {
+        throw new Error('Invalid token response from server');
+    }
+
+    await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify({
+        access_token:  data.access_token,
+        refresh_token: data.refresh_token,
+    })});
     console.log('Login successful!');
 }
 
