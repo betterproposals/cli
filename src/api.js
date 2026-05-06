@@ -1,15 +1,6 @@
 import { getAccessToken, refreshAccessToken } from './auth.js';
 
-// const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
-const BASE_URL = 'https://localapi.betterproposals:444'; // TODO: Replace with production URL
-
-function fetchOptions(url, options) {
-    const host = new URL(url).hostname;
-    if (host.endsWith('.betterproposals') || host === 'localhost') {
-        options.tls = { rejectUnauthorized: false };
-    }
-    return options;
-}
+const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
 
 async function request(method, path, { params = {}, body } = {}, retry = true) {
     const token = await getAccessToken();
@@ -33,7 +24,7 @@ async function request(method, path, { params = {}, body } = {}, retry = true) {
         options.body = form.toString();
     }
 
-    const response = await fetch(url.toString(), fetchOptions(url.toString(), options));
+    const response = await fetch(url.toString(), options);
 
     if (response.status === 401 && retry) {
         await refreshAccessToken();

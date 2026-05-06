@@ -3,10 +3,8 @@ import open from 'open';
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
 
-//const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login';
-//const REFRESH_URL = 'https://cli.dev.betterproposals.io/2/cli/refresh';
-const LOGIN_BASE = 'https://localdev.betterproposals/2/cli/login';
-const REFRESH_URL = 'https://localdev.betterproposals/2/cli/refresh';
+const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login'; //TODO: Replace with production URL
+const REFRESH_URL = 'https://cli.dev.betterproposals.io/2/cli/refresh'; //TODO: Replace with production URL
 
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.
@@ -172,15 +170,10 @@ async function refreshTokens(creds, retryOnce = true) {
     const form = new URLSearchParams();
     form.set('refresh_token', creds.refresh_token);
 
-    const host = new URL(REFRESH_URL).hostname;
-    const tlsOpts = (host.endsWith('.betterproposals') || host === 'localhost')
-        ? { tls: { rejectUnauthorized: false } } : {};
-
     const response = await fetch(REFRESH_URL, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: form.toString(),
-        ...tlsOpts,
     });
 
     if (response.ok) {
