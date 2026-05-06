@@ -84,12 +84,16 @@ export async function login() {
                 return new Response('State mismatch.', {status: 400});
             }
 
-            // User clicked "Cancel" on the BP login page.
             if (errorParam === 'access_denied') {
                 resolve(null);
                 return new Response(CANCELLED_HTML, {
                     headers: {'Content-Type': 'text/html', 'Connection': 'close'},
                 });
+            }
+
+            if (errorParam === 'account_blocked') {
+                reject(new Error('Your account has been restricted. Please contact Better Proposals support.'));
+                return new Response('Account restricted.', {status: 403});
             }
 
             if (!accessToken || !refreshToken) {
