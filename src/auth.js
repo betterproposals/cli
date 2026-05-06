@@ -187,7 +187,7 @@ async function refreshTokens(creds, retryOnce = true) {
     }
 
     if (response.status === 401) {
-        throw new Error('Session expired. Please run `bp login` again.');
+        throw new Error('Session expired. Please run `betterproposals login` again.');
     }
 
     if (response.status === 400 || response.status === 405) {
@@ -205,13 +205,13 @@ async function refreshTokens(creds, retryOnce = true) {
 
 export async function getAccessToken() {
     const creds = await getCredentials();
-    if (!creds) throw new Error('Not authenticated. Run `bp login` first.');
+    if (!creds) throw new Error('Not authenticated. Run `betterproposals login` first.');
     return creds.access_token;
 }
 
 export async function refreshAccessToken() {
     const creds = await getCredentials();
-    if (!creds) throw new Error('Not authenticated. Run `bp login` first.');
+    if (!creds) throw new Error('Not authenticated. Run `betterproposals login` first.');
     return refreshTokens(creds);
 }
 
