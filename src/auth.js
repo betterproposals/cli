@@ -6,6 +6,28 @@ const NAME = 'betterproposals-token';
 const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login'; //TODO: Replace with production URL
 const REFRESH_URL = 'https://cli.dev.betterproposals.io/2/cli/refresh'; //TODO: Replace with production URL
 
+const BLOCKED_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+<title>Account restricted - Better Proposals</title>
+<link rel="preconnect" href="https://use.typekit.net">
+<link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
+</head>
+<body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+
+<div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
+    <div style="margin-bottom:32px;">
+        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
+    </div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">Account restricted</div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">Your account has been restricted. Please contact Better Proposals support.</div>
+</div>
+
+</body>
+</html>`;
+
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.
 const CANCELLED_HTML = `<!DOCTYPE html>
@@ -90,8 +112,11 @@ export async function login() {
             }
 
             if (errorParam === 'account_blocked') {
-                reject(new Error('Your account has been restricted. Please contact Better Proposals support.'));
-                return new Response('Account restricted.', {status: 403});
+                reject(new Error('Your account has been restricted. Please contact support.'));
+                return new Response(BLOCKED_HTML, {
+                    status: 403,
+                    headers: {'Content-Type': 'text/html', 'Connection': 'close'},
+                });
             }
 
             if (!accessToken || !refreshToken) {
