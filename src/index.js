@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
-import { login } from './auth.js';
+import { login, logout } from './auth.js';
 import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
 
 const program = new Command();
@@ -18,6 +18,18 @@ program
             await login();
         } catch (err) {
             console.error('Login failed:', err.message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command('logout')
+    .description('Log out and remove stored credentials')
+    .action(async () => {
+        try {
+            await logout();
+        } catch (err) {
+            console.error('Logout failed:', err.message);
             process.exit(1);
         }
     });

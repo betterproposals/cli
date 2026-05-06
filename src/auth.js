@@ -1,14 +1,12 @@
 import open from 'open';
 
-// Identifies our credential entry in the OS keychain (macOS Keychain,
-// Windows Credential Manager, libsecret on Linux). The (service, name)
-// pair is the lookup key.
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
 
-// Web endpoint that issues a CLI token for the signed-in user and
-// redirects back to our local callback.
-const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login'; //TODO: Replace with production URL
+//const LOGIN_BASE = 'https://cli.dev.betterproposals.io/2/cli/login';
+//const REFRESH_URL = 'https://cli.dev.betterproposals.io/2/cli/refresh';
+const LOGIN_BASE = 'https://localdev.betterproposals/2/cli/login';
+const REFRESH_URL = 'https://localdev.betterproposals/2/cli/refresh';
 
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.
@@ -75,7 +73,8 @@ export async function login() {
             }
 
             const returnedState = url.searchParams.get('state');
-            const token = url.searchParams.get('token');
+            const accessToken = url.searchParams.get('access_token');
+            const refreshToken = url.searchParams.get('refresh_token');
             const errorParam = url.searchParams.get('error');
 
             // CSRF check first; applies to BOTH the success and the cancel
@@ -85,11 +84,7 @@ export async function login() {
                 return new Response('State mismatch.', {status: 400});
             }
 
-            // User clicked "Cancel" on the BP login page. The web app
-            // redirects here with `?error=access_denied` so the CLI doesn't
-            // hang forever waiting on a callback that will never come.
-            // Resolve with `null` to signal cancellation; login() handles
-            // the no-token case cleanly without throwing.
+            // User clicked "Cancel" on the BP login page.
             if (errorParam === 'access_denied') {
                 resolve(null);
                 return new Response(CANCELLED_HTML, {
@@ -97,14 +92,12 @@ export async function login() {
                 });
             }
 
-            if (!token) {
-                reject(new Error('No token received from server'));
-                return new Response('No token received.', {status: 400});
+            if (!accessToken || !refreshToken) {
+                reject(new Error('Missing access_token or refresh_token in callback'));
+                return new Response('Missing tokens.', {status: 400});
             }
 
-            // Hand the token off to the awaiting login() body. The Response
-            // returned below is what the user actually sees in the browser.
-            resolve(token);
+            resolve({ access_token: accessToken, refresh_token: refreshToken });
 
             return new Response(
                 `<!DOCTYPE html>
@@ -145,41 +138,86 @@ export async function login() {
     console.log('Opening browser for authentication…');
     await open(loginUrl);
 
-    let token;
+    let result;
     try {
-        // Suspend until /callback fires (or the handler rejects on bad input).
-        // `token` is null if the user clicked Cancel on the BP login page.
-        token = await done;
+        result = await done;
     } finally {
-        // Graceful stop: stops accepting new connections and resolves only
-        // once active ones have drained.
         await server.stop();
     }
 
-    // Cancellation path: nothing to store, nothing went wrong. Exit quietly.
-    if (token === null) {
+    if (result === null) {
         console.log('Login cancelled.');
         return;
     }
 
-    // Persist to the OS keychain. Subsequent CLI commands will read this back
-    // via getToken() instead of re-running the browser flow.
-    await Bun.secrets.set({service: SERVICE, name: NAME, value: token});
+    const creds = {
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+    };
+    await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify(creds)});
     console.log('Login successful!');
-    console.log('Token:', token); //TODO: Remove this, only for debugging
 }
 
-/**
- * Read the stored CLI token, or `null` if the user has never logged in.
- */
-export async function getToken() {
-    return Bun.secrets.get({service: SERVICE, name: NAME});
+async function getCredentials() {
+    const raw = await Bun.secrets.get({service: SERVICE, name: NAME});
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
 }
 
-/**
- * Remove the stored token from the OS keychain. The next command that
- * needs auth will have to trigger login() again.
- */
+async function refreshTokens(creds, retryOnce = true) {
+    const form = new URLSearchParams();
+    form.set('refresh_token', creds.refresh_token);
+
+    const host = new URL(REFRESH_URL).hostname;
+    const tlsOpts = (host.endsWith('.betterproposals') || host === 'localhost')
+        ? { tls: { rejectUnauthorized: false } } : {};
+
+    const response = await fetch(REFRESH_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: form.toString(),
+        ...tlsOpts,
+    });
+
+    if (response.ok) {
+        const data = await response.json();
+        const newCreds = {
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+        };
+        await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify(newCreds)});
+        return newCreds.access_token;
+    }
+
+    if (response.status === 401) {
+        throw new Error('Session expired. Please run `bp login` again.');
+    }
+
+    if (response.status === 400 || response.status === 405) {
+        console.error(`Token refresh failed with status ${response.status}. This is a CLI bug.`);
+        process.exit(1);
+    }
+
+    if (response.status === 500) {
+        if (retryOnce) return refreshTokens(creds, false);
+        throw new Error('Server error during token refresh. Please try again later.');
+    }
+
+    throw new Error(`Unexpected token refresh error: ${response.status}`);
+}
+
+export async function getAccessToken() {
+    const creds = await getCredentials();
+    if (!creds) throw new Error('Not authenticated. Run `bp login` first.');
+    return creds.access_token;
+}
+
+export async function refreshAccessToken() {
+    const creds = await getCredentials();
+    if (!creds) throw new Error('Not authenticated. Run `bp login` first.');
+    return refreshTokens(creds);
+}
+
 export async function logout() {
     await Bun.secrets.delete({service: SERVICE, name: NAME});
     console.log('Logged out.');
