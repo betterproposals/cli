@@ -140,8 +140,28 @@ export async function login() {
 
             resolve(code);
 
-            // The browser sent this as a no-cors fetch; it ignores our response.
-            return new Response('OK', {headers: {'Connection': 'close'}});
+            return new Response(
+                `<!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+                    <title>Authenticated - Better Proposals</title>
+                    <link rel="preconnect" href="https://use.typekit.net">
+                    <link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
+                    </head>
+                    <body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+                    <div style="display:flex; flex-direction:column; gap:2rem; align-items:center; margin:4rem auto; box-sizing:border-box; max-width:75%">
+                        <div style="margin-bottom:32px;">
+                            <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
+                        </div>
+                        <div style="font-family:'neue-haas-grotesk-display',-apple-system,system-ui,BlinkMacSystemFont,Helvetica,Lato,'Lucida Grande',sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing:0.03rem; line-height:1.3; margin-bottom:-1rem;">You're logged in!</div>
+                        <div style="font-family:'neue-haas-grotesk-display',-apple-system,system-ui,BlinkMacSystemFont,Helvetica,Lato,'Lucida Grande',sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing:0.03rem; line-height:1.3;">You've successfully authenticated with the Better Proposals CLI. You can close this tab and return to your terminal.</div>
+                    </div>
+                    </body>
+                    </html>`,
+                {headers: {'Content-Type': 'text/html', 'Connection': 'close'}}
+            );
         },
     });
 
