@@ -3,7 +3,8 @@
   "type": "module",
   "version": "0.0.1",
   "bin": {
-    "betterproposals": "./src/index.js"
+    "betterproposals": "./src/index.js",
+    "betterproposals-mcp": "./src/mcp.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

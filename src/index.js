@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { login, logout } from './auth.js';
 import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
+import { install, uninstall, TARGETS } from './mcp-install.js';
 
 const program = new Command();
 
@@ -453,6 +454,34 @@ templatesCmd
                 perPage: Number(opts.perPage),
             });
             console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const mcpCmd = program
+    .command('mcp')
+    .description('MCP server management');
+
+mcpCmd
+    .command('install <target>')
+    .description(`Register the MCP server with an agent config. Targets: ${TARGETS.join(', ')}`)
+    .action((target) => {
+        try {
+            install(target);
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+mcpCmd
+    .command('uninstall <target>')
+    .description(`Remove the MCP server from an agent config. Targets: ${TARGETS.join(', ')}`)
+    .action((target) => {
+        try {
+            uninstall(target);
         } catch (err) {
             console.error(err.message);
             process.exit(1);
