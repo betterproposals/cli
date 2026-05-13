@@ -20,6 +20,32 @@ bun link
 bun src/index.js <command>
 ```
 
+## MCP (AI Agent Integration)
+
+The CLI includes an MCP server that exposes all Better Proposals functionality as tools to AI agents (Claude, Gemini, Cursor, etc.).
+
+### Setup
+
+1. Authenticate first:
+```bash
+betterproposals login
+```
+
+2. Register the MCP server with your agent:
+```bash
+betterproposals mcp install claude-code
+betterproposals mcp install claude-desktop
+betterproposals mcp install cursor
+betterproposals mcp install gemini
+```
+
+3. Restart your agent app. It will now have access to all Better Proposals tools.
+
+To remove the registration:
+```bash
+betterproposals mcp uninstall <target>
+```
+
 ## Commands
 
 ### `login`
