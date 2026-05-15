@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { login, logout } from './auth.js';
 import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
 import { install, uninstall, TARGETS } from './mcp-install.js';
+import { runAgent } from './ai.js';
 
 const program = new Command();
 
@@ -482,6 +483,34 @@ mcpCmd
     .action((target) => {
         try {
             uninstall(target);
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command('ai <prompt>')
+    .description('Send a natural-language prompt to a Llama (Ollama-compatible) endpoint with access to all Better Proposals tools')
+    .option('--endpoint <url>', 'Ollama-compatible chat endpoint (env: BETTERPROPOSALS_LLAMA_URL)')
+    .option('--model <name>', 'Model name to use (env: BETTERPROPOSALS_LLAMA_MODEL)')
+    .option('--system <text>', 'Override the default system prompt')
+    .option('--max-iterations <n>', 'Maximum tool-calling rounds before giving up', '8')
+    .option('--json', 'Output a structured JSON object including the tool-call trace')
+    .action(async (prompt, opts) => {
+        try {
+            const result = await runAgent({
+                prompt,
+                endpoint: opts.endpoint,
+                model: opts.model,
+                system: opts.system,
+                maxIterations: Number(opts.maxIterations),
+            });
+            if (opts.json) {
+                console.log(JSON.stringify(result, null, 2));
+            } else {
+                console.log(result.response);
+            }
         } catch (err) {
             console.error(err.message);
             process.exit(1);
