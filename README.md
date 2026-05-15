@@ -46,6 +46,29 @@ To remove the registration:
 betterproposals mcp uninstall <target>
 ```
 
+## Llama (self-hosted models)
+
+For Llama models (e.g. a `llama3.2:1b` small model) the CLI ships its own agent loop instead of relying on a host app. It speaks to any Ollama-compatible `/api/chat` endpoint, advertises all Better Proposals tools via the `tools` field, and dispatches the model's `tool_calls` against the same handlers the MCP server uses.
+
+Configure the endpoint with env vars (override per-invocation with `--endpoint` / `--model`):
+
+```bash
+export BETTERPROPOSALS_LLAMA_URL="http://llama-host:11434/api/chat"
+export BETTERPROPOSALS_LLAMA_MODEL="llama3.2:1b"
+```
+
+Then send a natural-language prompt:
+
+```bash
+betterproposals ai "How many documents have I sent today?"
+```
+
+For programmatic use (e.g. the web-app shell), `--json` returns the response plus a structured trace of every tool call:
+
+```bash
+betterproposals ai "List the last 3 templates I created" --json
+```
+
 ## Commands
 
 ### `login`
@@ -371,3 +394,21 @@ betterproposals templates all [options]
 |--------|-------------|---------|
 | `-p, --page <number>` | Page number | `1` |
 | `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
+### `ai <prompt>`
+
+Send a natural-language prompt to a Llama (Ollama-compatible) endpoint with access to all Better Proposals tools. Drives the full agent loop locally — tool defs are advertised to the model, returned `tool_calls` are dispatched against the same handlers the MCP server uses, and results are fed back until the model produces a final answer.
+
+```bash
+betterproposals ai "<prompt>" [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
+| `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` |
+| `--system <text>` | Override the default system prompt | built-in |
+| `--max-iterations <n>` | Maximum tool-calling rounds before giving up | `8` |
+| `--json` | Output a structured JSON object with the tool-call trace | off |
