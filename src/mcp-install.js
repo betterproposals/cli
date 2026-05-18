@@ -45,14 +45,24 @@ function writeConfig(path, config) {
 }
 
 function resolveMcpBinary() {
+    // `which` doesn't exist on Windows — use `where` there. `where` can
+    // return multiple matches (one per line), so take the first.
+    const lookup = process.platform === 'win32' ? 'where' : 'which';
     try {
-        return execSync('which betterproposals-mcp', { encoding: 'utf8' }).trim();
+        const out = execSync(`${lookup} betterproposals-mcp`, { encoding: 'utf8' }).trim();
+        return out.split(/\r?\n/)[0].trim();
     } catch {
         throw new Error(
             'betterproposals-mcp binary not found on PATH.\n' +
             'Run `bun link` (or `npm install -g @betterproposals/cli`) first, then retry.'
         );
     }
+}
+
+function quoteArg(arg) {
+    // Wrap in double quotes if the path contains whitespace, so the shell
+    // passes it as a single arg to `claude mcp add` / `gemini mcp add`.
+    return /\s/.test(arg) ? `"${arg}"` : arg;
 }
 
 function validateTarget(target) {
@@ -66,7 +76,7 @@ function installClaudeCode(command) {
     // Claude Code CLI manages its own MCP config via `claude mcp add/remove`.
     // Writing to settings.json directly is silently ignored by the CLI.
     try {
-        execSync(`claude mcp add -s user betterproposals ${command}`, { stdio: 'inherit' });
+        execSync(`claude mcp add -s user betterproposals ${quoteArg(command)}`, { stdio: 'inherit' });
     } catch {
         throw new Error('Failed to register MCP server. Is the `claude` CLI installed and on PATH?');
     }
@@ -82,7 +92,7 @@ function uninstallClaudeCode() {
 
 function installGemini(command) {
     try {
-        execSync(`gemini mcp add -s user betterproposals ${command}`, { stdio: 'inherit' });
+        execSync(`gemini mcp add -s user betterproposals ${quoteArg(command)}`, { stdio: 'inherit' });
     } catch {
         throw new Error('Failed to register MCP server. Is the `gemini` CLI installed and on PATH?');
     }
