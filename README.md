@@ -12,7 +12,7 @@ You need a GitHub Personal Access Token with `repo` scope. Generate one at `gith
 Since we don't have a "release" tag yet (just pre-release), you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```bash
-curl -fsSL https://betterproposals.io/cli-install | env BP_CLI_VERSION=v0.1.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
+curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.1.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
 ```
 
 **Once the repo is public:** 
@@ -32,7 +32,7 @@ curl -fsSL https://betterproposals.io/cli-install | bash
 Same with `Windows/PowerShell`, you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```powershell
-$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.1.0"; iwr https://betterproposals.io/cli-install-windows | iex
+$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.1.0"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
 ```
 
 **Once the repo is public:**
