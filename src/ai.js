@@ -9,6 +9,9 @@ import { TOOLS, TOOLS_BY_NAME } from './tools.js';
 const DEFAULT_ENDPOINT = 'http://localhost:11434/api/chat';
 const DEFAULT_MODEL = 'llama3.2:1b';
 const DEFAULT_MAX_ITERATIONS = 8;
+// Per-request timeout. Generous default because large local models on CPU
+// can take minutes for a single response; overrideable via --timeout or env.
+const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
 
 const DEFAULT_SYSTEM = `You are the Better Proposals assistant. You help the user manage their proposals, companies, templates, and account settings by calling the provided tools.
 
@@ -115,12 +118,31 @@ async function invokeTool(call) {
     }
 }
 
-async function callOllama({ endpoint, model, messages, tools }) {
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, tools, stream: false }),
-    });
+async function callOllama({ endpoint, model, messages, tools, timeoutMs }) {
+    // Use our own AbortSignal as the single source of truth for timing,
+    // and disable Bun's built-in ~5min fetch timeout via `timeout: false`
+    // (no-op on Node/undici, the fix on Bun). `signal.aborted` lets us
+    // distinguish our timeout from connection/HTTP errors in the catch.
+    const signal = AbortSignal.timeout(timeoutMs);
+    let response;
+    try {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model, messages, tools, stream: false }),
+            signal,
+            timeout: false,
+        });
+    } catch (e) {
+        if (signal.aborted) {
+            throw new Error(
+                `Llama endpoint did not respond within ${Math.round(timeoutMs / 1000)}s. ` +
+                'Large local models can be slow, especially on CPU. ' +
+                'Increase the limit with --timeout <seconds> or BETTERPROPOSALS_LLAMA_TIMEOUT (seconds).'
+            );
+        }
+        throw e;
+    }
 
     if (!response.ok) {
         const text = await response.text().catch(() => '');
@@ -140,6 +162,7 @@ export async function runAgent({
     model = process.env.BETTERPROPOSALS_LLAMA_MODEL || DEFAULT_MODEL,
     system = DEFAULT_SYSTEM,
     maxIterations = DEFAULT_MAX_ITERATIONS,
+    timeoutMs = Number(process.env.BETTERPROPOSALS_LLAMA_TIMEOUT) * 1000 || DEFAULT_REQUEST_TIMEOUT_MS,
     onEvent,
 } = {}) {
     if (!prompt || typeof prompt !== 'string') {
@@ -154,7 +177,7 @@ export async function runAgent({
     const trace = [];
 
     for (let i = 0; i < maxIterations; i++) {
-        const data = await callOllama({ endpoint, model, messages, tools });
+        const data = await callOllama({ endpoint, model, messages, tools, timeoutMs });
         const msg = data.message;
         messages.push(msg);
         onEvent?.({ type: 'assistant', iteration: i, content: msg.content, tool_calls: msg.tool_calls });

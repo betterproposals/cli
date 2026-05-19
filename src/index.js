@@ -496,6 +496,7 @@ program
     .option('--model <name>', 'Model name to use (env: BETTERPROPOSALS_LLAMA_MODEL)')
     .option('--system <text>', 'Override the default system prompt')
     .option('--max-iterations <n>', 'Maximum tool-calling rounds before giving up', '8')
+    .option('--timeout <seconds>', 'Per-request timeout in seconds (env: BETTERPROPOSALS_LLAMA_TIMEOUT)')
     .option('--json', 'Output a structured JSON object including the tool-call trace')
     .action(async (prompt, opts) => {
         try {
@@ -505,6 +506,7 @@ program
                 model: opts.model,
                 system: opts.system,
                 maxIterations: Number(opts.maxIterations),
+                timeoutMs: opts.timeout ? Number(opts.timeout) * 1000 : undefined,
             });
             if (opts.json) {
                 console.log(JSON.stringify(result, null, 2));

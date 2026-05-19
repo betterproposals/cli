@@ -411,4 +411,5 @@ betterproposals ai "<prompt>" [options]
 | `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` |
 | `--system <text>` | Override the default system prompt | built-in |
 | `--max-iterations <n>` | Maximum tool-calling rounds before giving up | `8` |
+| `--timeout <seconds>` | Per-request timeout in seconds | `$BETTERPROPOSALS_LLAMA_TIMEOUT` or `300` |
 | `--json` | Output a structured JSON object with the tool-call trace | off |
