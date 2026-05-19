@@ -6,6 +6,14 @@
     "betterproposals": "./src/index.js",
     "betterproposals-mcp": "./src/mcp.js"
   },
+  "scripts": {
+    "build:mac-arm64": "bun build --compile --target=bun-darwin-arm64 src/index.js --outfile dist/betterproposals-mac-arm64 && bun build --compile --target=bun-darwin-arm64 src/mcp.js --outfile dist/betterproposals-mcp-mac-arm64",
+    "build:mac-x64": "bun build --compile --target=bun-darwin-x64 src/index.js --outfile dist/betterproposals-mac-x64 && bun build --compile --target=bun-darwin-x64 src/mcp.js --outfile dist/betterproposals-mcp-mac-x64",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 src/index.js --outfile dist/betterproposals-linux-x64 && bun build --compile --target=bun-linux-x64 src/mcp.js --outfile dist/betterproposals-mcp-linux-x64",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 src/index.js --outfile dist/betterproposals-linux-arm64 && bun build --compile --target=bun-linux-arm64 src/mcp.js --outfile dist/betterproposals-mcp-linux-arm64",
+    "build:windows": "bun build --compile --target=bun-windows-x64 src/index.js --outfile dist/betterproposals-win-x64.exe && bun build --compile --target=bun-windows-x64 src/mcp.js --outfile dist/betterproposals-mcp-win-x64.exe",
+    "build:all": "mkdir -p dist && bun run build:mac-arm64 && bun run build:mac-x64 && bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:windows"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "commander": "^14.0.3",
