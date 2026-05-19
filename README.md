@@ -7,6 +7,44 @@ _(This will be user-facing CLI documentation later on)_
 
 ## Install
 
+### macOS / Linux
+
+**While the repo is private** (testing phase), you need a GitHub Personal Access Token with `repo` scope. Generate one at `github.com → Settings → Developer settings → Personal access tokens` or use an existing one.
+
+Since we don't have a "release" yet, you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
+
+```bash
+curl -fsSL https://betterproposals.io/cli-install | env BP_CLI_VERSION=v0.1.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
+```
+
+Once the repo is public, users will be able to just install the latest version with:
+
+```bash
+curl -fsSL https://betterproposals.io/cli-install | bash
+```
+
+---
+
+### Windows (PowerShell)
+
+**While the repo is private:**
+
+Same with Windows/PowerShell, you'll need to install a specific version of the CLI, specified with the BP_CLI_VERSION env var.
+
+```powershell
+$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.1.0"; iwr https://betterproposals.io/cli-install-windows | iex
+```
+
+Same when the repo is public:
+
+```powershell
+iwr https://betterproposals.io/cli-install-windows | iex
+```
+
+---
+
+### Developer setup (from source)
+
 ```bash
 bun install
 bun link
