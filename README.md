@@ -1,10 +1,6 @@
 # Better Proposals CLI (Developer Setup)
 _(This will be user-facing CLI documentation later on)_
 
-## Prerequisites
-
-- [Bun](https://bun.com) v1.3+
-
 ## Install
 
 ### macOS / Linux
@@ -43,7 +39,13 @@ iwr https://betterproposals.io/cli-install-windows | iex
 
 ---
 
-### Developer setup (from source)
+## Developer setup (from source)
+
+⚠️ Not needed if you installed the CLI via the `curl/iwr` command above. ⚠️
+
+### Install from local source code
+
+Requires [Bun](https://bun.com) v1.3+.
 
 ```bash
 bun install
@@ -52,7 +54,9 @@ bun link
 
 `bun link` registers the package globally so the `betterproposals` binary is available anywhere in your shell.
 
-## Run without installing
+### Run from local source code without installing
+
+Requires [Bun](https://bun.com) v1.3+.
 
 ```bash
 bun src/index.js <command>
