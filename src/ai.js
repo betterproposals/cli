@@ -125,14 +125,28 @@ function toolToOllamaSpec(tool) {
 // project each item down to the fields actually useful for answering
 // typical questions; the full raw JSON is still written to disk for
 // debugging or downstream consumers.
+const DOCUMENT_FIELDS = ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'];
+
 const TOOL_PROJECTIONS = {
-    documents_list:        ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_list_new:    ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_list_opened: ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_list_sent:   ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_list_signed: ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_list_paid:   ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
-    documents_get:         ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'],
+    documents_list:        DOCUMENT_FIELDS,
+    documents_list_new:    DOCUMENT_FIELDS,
+    documents_list_opened: DOCUMENT_FIELDS,
+    documents_list_sent:   DOCUMENT_FIELDS,
+    documents_list_signed: DOCUMENT_FIELDS,
+    documents_list_paid:   DOCUMENT_FIELDS,
+    documents_get:         DOCUMENT_FIELDS,
+
+    templates_list:        ['ID', 'TemplateName', 'TypeID', 'DateCreated', 'DateEdited', 'QuoteAmount', 'MonthlyAmount', 'QuarterlyAmount', 'AnnualAmount', 'Default'],
+    companies_list:        ['ID', 'CompanyName', 'DateCreated', 'DateEdited'],
+    currencies_list:       ['ID', 'CurrencyName', 'CurrencySymbol', 'CurrencyCode'],
+    // Drop TypeIcon — it's an HTML <i> tag that the model often mistakes
+    // for instruction markup.
+    document_types_list:   ['ID', 'TypeName', 'TypeNameSingular', 'TypeColour', 'NumberOfOutstandingDocuments', 'NumberOfTemplates'],
+    settings_merge_tags:   ['ID', 'Name', 'Tag', 'Fallback', 'Archived'],
+    // Singletons — `data` is an object, not an array. Same projection
+    // mechanism still applies via the `else if` branch in reduceToolResult.
+    settings_get:          ['CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'TimeZone', 'DateEdited', 'CustomerJourneysActive', 'CustomerJourneysDefault'],
+    settings_brand:        ['ID', 'Name', 'CompanyName', 'Default', 'PageTitle', 'CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'ShowBadge', 'DateCreated', 'DateEdited'],
 };
 
 // Where we drop full raw tool responses for this process. Useful for
