@@ -497,6 +497,8 @@ program
     .option('--system <text>', 'Override the default system prompt')
     .option('--max-iterations <n>', 'Maximum tool-calling rounds before giving up', '8')
     .option('--timeout <seconds>', 'Per-request timeout in seconds (env: BETTERPROPOSALS_LLAMA_TIMEOUT)')
+    .option('--num-ctx <n>', 'Ollama context window in tokens (env: BETTERPROPOSALS_LLAMA_NUM_CTX)')
+    .option('--max-tool-items <n>', 'Max items kept from a tool result `data` array (env: BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS)')
     .option('--json', 'Output a structured JSON object including the tool-call trace')
     .action(async (prompt, opts) => {
         try {
@@ -507,6 +509,8 @@ program
                 system: opts.system,
                 maxIterations: Number(opts.maxIterations),
                 timeoutMs: opts.timeout ? Number(opts.timeout) * 1000 : undefined,
+                numCtx: opts.numCtx ? Number(opts.numCtx) : undefined,
+                maxToolResultItems: opts.maxToolItems ? Number(opts.maxToolItems) : undefined,
             });
             if (opts.json) {
                 console.log(JSON.stringify(result, null, 2));
