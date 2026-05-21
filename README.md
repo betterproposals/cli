@@ -117,6 +117,27 @@ For programmatic use (e.g. the web-app shell), `--json` returns the response plu
 betterproposals ai "List the last 3 templates I created" --json
 ```
 
+### Multi-turn conversations
+
+Each `betterproposals ai` invocation is its own process and would otherwise start fresh. Pass `--session <id>` to persist conversation history under that ID so follow-up turns retain context:
+
+```bash
+betterproposals ai "How many sent documents do I have?" --session user-42-conv-7
+betterproposals ai "And how many were paid?"            --session user-42-conv-7
+```
+
+History is stored at `~/.betterproposals/sessions/<id>.json` (the system prompt is regenerated each run so the date stays current). The persisted history is capped at 40 messages — older turns are dropped first; override with `BETTERPROPOSALS_LLAMA_MAX_SESSION_MESSAGES`. To start a fresh chat, use a new ID or delete the file.
+
+### Tool-result handling
+
+Raw API responses can be huge (a single sent-proposals list is ~270 KB of JSON), which overwhelms small/local models and causes them to mistake the data for user input. To prevent this, the agent:
+
+1. **Projects each tool result to key fields only** — drops nested noise like `PriceTables`, `Contacts`, full `Description`/`Preview` URLs, audit metadata, and HTML markup.
+2. **Caps array results** at `--max-tool-items` (default 25, newest-first preserved).
+3. **Saves the full raw JSON** to `<tmp>/betterproposals-ai/<pid>-<ts>/<NNN>-<tool>.json` so it's still inspectable for debugging or the web-app UI — but never enters the model's context.
+
+The slim result fed back to the model includes a `_note` field describing what was projected and where the raw data lives.
+
 ## Commands
 
 ### `login`
@@ -457,7 +478,10 @@ betterproposals ai "<prompt>" [options]
 |--------|-------------|---------|
 | `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
 | `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` |
-| `--system <text>` | Override the default system prompt | built-in |
+| `--system <text>` | Override the default system prompt | built-in (includes today's local date) |
 | `--max-iterations <n>` | Maximum tool-calling rounds before giving up | `8` |
 | `--timeout <seconds>` | Per-request timeout in seconds | `$BETTERPROPOSALS_LLAMA_TIMEOUT` or `300` |
+| `--num-ctx <n>` | Ollama context window in tokens | `$BETTERPROPOSALS_LLAMA_NUM_CTX` or `16384` |
+| `--max-tool-items <n>` | Max items kept from a tool result `data` array | `$BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS` or `25` |
+| `--session <id>` | Persist conversation history under this ID so multi-turn chat works across invocations | `$BETTERPROPOSALS_LLAMA_SESSION` (none) |
 | `--json` | Output a structured JSON object with the tool-call trace | off |
