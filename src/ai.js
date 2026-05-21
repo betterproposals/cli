@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { writeFileSync, mkdirSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
+import { tmpdir, homedir } from 'os';
+import { join, dirname } from 'path';
 import { TOOLS, TOOLS_BY_NAME } from './tools.js';
 
 // Agent loop that lets a locally-hosted Llama (or any Ollama-compatible
@@ -24,6 +24,10 @@ const DEFAULT_NUM_CTX = 16384;
 // context window. Results are sorted newest-first by the API, so keeping
 // the first N preserves the most relevant data for date/recency queries.
 const DEFAULT_MAX_TOOL_RESULT_ITEMS = 25;
+// Cap on total persisted session messages (system prompt excluded). Older
+// turns get dropped first when over the limit. Prevents the context from
+// growing unbounded across many turns of a long conversation.
+const DEFAULT_MAX_SESSION_MESSAGES = 40;
 
 function buildDefaultSystem() {
     // Use the user's local date, not UTC — when the machine's TZ is ahead
@@ -148,6 +152,45 @@ const TOOL_PROJECTIONS = {
     settings_get:          ['CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'TimeZone', 'DateEdited', 'CustomerJourneysActive', 'CustomerJourneysDefault'],
     settings_brand:        ['ID', 'Name', 'CompanyName', 'Default', 'PageTitle', 'CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'ShowBadge', 'DateCreated', 'DateEdited'],
 };
+
+// Where persisted conversation histories live, one JSON file per
+// --session <id>. The web-app's simulated shell passes the same id for
+// each prompt from a given user/conversation so the model retains context
+// across CLI invocations (each `betterproposals ai` call is a separate
+// process and would otherwise start fresh).
+const SESSIONS_DIR = join(homedir(), '.betterproposals', 'sessions');
+
+function sessionPath(id) {
+    // Sanitize: only allow word chars, dashes, dots — sessions IDs come from
+    // callers, so don't let them path-traverse.
+    const safe = String(id).replace(/[^A-Za-z0-9._-]/g, '_');
+    return join(SESSIONS_DIR, `${safe}.json`);
+}
+
+function loadSession(id) {
+    if (!id) return [];
+    const path = sessionPath(id);
+    if (!existsSync(path)) return [];
+    try {
+        const parsed = JSON.parse(readFileSync(path, 'utf8'));
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveSession(id, messages, maxMessages) {
+    if (!id) return;
+    // System message is regenerated each run (today's date is dynamic), so
+    // never persist it. Drop the oldest turns first if over the cap.
+    const persisted = messages.filter((m) => m.role !== 'system');
+    const trimmed = persisted.length > maxMessages
+        ? persisted.slice(persisted.length - maxMessages)
+        : persisted;
+    const path = sessionPath(id);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(trimmed), 'utf8');
+}
 
 // Where we drop full raw tool responses for this process. Useful for
 // debugging and for the web app's "show me what the model actually saw"
@@ -278,6 +321,8 @@ export async function runAgent({
     timeoutMs = Number(process.env.BETTERPROPOSALS_LLAMA_TIMEOUT) * 1000 || DEFAULT_REQUEST_TIMEOUT_MS,
     numCtx = Number(process.env.BETTERPROPOSALS_LLAMA_NUM_CTX) || DEFAULT_NUM_CTX,
     maxToolResultItems = Number(process.env.BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS) || DEFAULT_MAX_TOOL_RESULT_ITEMS,
+    sessionId = process.env.BETTERPROPOSALS_LLAMA_SESSION || null,
+    maxSessionMessages = Number(process.env.BETTERPROPOSALS_LLAMA_MAX_SESSION_MESSAGES) || DEFAULT_MAX_SESSION_MESSAGES,
     onEvent,
 } = {}) {
     if (!prompt || typeof prompt !== 'string') {
@@ -286,6 +331,9 @@ export async function runAgent({
 
     const messages = [];
     if (system) messages.push({ role: 'system', content: system });
+    // Rehydrate prior turns from disk so the conversation feels continuous
+    // across CLI invocations.
+    messages.push(...loadSession(sessionId));
     messages.push({ role: 'user', content: prompt });
 
     const tools = TOOLS.map(toolToOllamaSpec);
@@ -298,6 +346,7 @@ export async function runAgent({
         onEvent?.({ type: 'assistant', iteration: i, content: msg.content, tool_calls: msg.tool_calls });
 
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
+            saveSession(sessionId, messages, maxSessionMessages);
             return { response: msg.content ?? '', trace, iterations: i + 1, truncated: false };
         }
 
@@ -321,6 +370,7 @@ export async function runAgent({
         }
     }
 
+    saveSession(sessionId, messages, maxSessionMessages);
     return {
         response: '(agent stopped: max iterations reached without a final answer)',
         trace,
