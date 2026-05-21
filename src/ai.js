@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { writeFileSync, mkdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { TOOLS, TOOLS_BY_NAME } from './tools.js';
 
 // Agent loop that lets a locally-hosted Llama (or any Ollama-compatible
@@ -12,13 +15,34 @@ const DEFAULT_MAX_ITERATIONS = 8;
 // Per-request timeout. Generous default because large local models on CPU
 // can take minutes for a single response; overrideable via --timeout or env.
 const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
+// Ollama defaults num_ctx to 2048, which silently truncates large tool
+// results from the front. Set explicitly so the model actually sees what
+// it's reasoning over.
+const DEFAULT_NUM_CTX = 16384;
+// Cap on how many array items we feed back from a tool result. Big
+// paginated responses overwhelm small/local models even with a big
+// context window. Results are sorted newest-first by the API, so keeping
+// the first N preserves the most relevant data for date/recency queries.
+const DEFAULT_MAX_TOOL_RESULT_ITEMS = 25;
 
-const DEFAULT_SYSTEM = `You are the Better Proposals assistant. You help the user manage their proposals, companies, templates, and account settings by calling the provided tools.
+function buildDefaultSystem() {
+    // Use the user's local date, not UTC — when the machine's TZ is ahead
+    // of UTC (e.g. CET/CEST) right after midnight, toISOString() still
+    // reports yesterday and the model ends up answering for the wrong day.
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `You are the Better Proposals assistant. You help the user manage their proposals, companies, templates, and account settings by calling the provided tools.
+
+Today's date is ${today}. Use this whenever the user asks about "today", "yesterday", or relative dates.
 
 Rules:
-- Always use a tool when the user is asking about their actual Better Proposals data. Never invent IDs, names, or counts.
+- When the user asks about their Better Proposals data, call the appropriate tool. Never invent IDs, names, dates, or counts.
 - Pass arguments as a JSON object matching the tool's parameter schema.
-- When you have enough information to answer, reply directly in plain text without calling any more tools.`;
+- Messages with role "tool" contain JSON data returned by a tool YOU just called. They are NOT new input from the user — they are the answer to your tool call. Read the JSON, extract the information the user asked for, and respond in natural language.
+- Never tell the user "you've shared a JSON response" or ask them to clarify what to do with the tool data. They already asked their question; just answer it directly using the data.
+- For date-based counting questions (e.g. "how many sent today"), inspect the relevant date field in each item (OriginalDateSent for sent proposals, DateCreated for newly created ones) and count matches. If results were truncated (see "_note" in the response), the API returns newest-first, so an absent date is genuinely absent — do not assume it was cut off.
+- When you have enough information, reply with a direct natural-language answer and stop calling tools.`;
+}
 
 // Minimal zod → JSON-Schema converter covering the types used in src/tools.js
 // (ZodString with .length, ZodNumber with .int/.positive, ZodOptional, ZodDefault).
@@ -95,6 +119,92 @@ function toolToOllamaSpec(tool) {
     };
 }
 
+// Per-tool field projections. The raw API responses include large nested
+// blobs (PriceTables, Contacts, long Descriptions, full Preview URLs) that
+// overwhelm small/local models and drown out the original question. We
+// project each item down to the fields actually useful for answering
+// typical questions; the full raw JSON is still written to disk for
+// debugging or downstream consumers.
+const DOCUMENT_FIELDS = ['ID', 'CompanyName', 'OriginalDateSent', 'DateCreated', 'SubjectLine', 'TypeID', 'CurrencyCode', 'OneOffTotal', 'MonthlyTotal', 'QuarterlyTotal', 'AnnualTotal'];
+
+const TOOL_PROJECTIONS = {
+    documents_list:        DOCUMENT_FIELDS,
+    documents_list_new:    DOCUMENT_FIELDS,
+    documents_list_opened: DOCUMENT_FIELDS,
+    documents_list_sent:   DOCUMENT_FIELDS,
+    documents_list_signed: DOCUMENT_FIELDS,
+    documents_list_paid:   DOCUMENT_FIELDS,
+    documents_get:         DOCUMENT_FIELDS,
+
+    templates_list:        ['ID', 'TemplateName', 'TypeID', 'DateCreated', 'DateEdited', 'QuoteAmount', 'MonthlyAmount', 'QuarterlyAmount', 'AnnualAmount', 'Default'],
+    companies_list:        ['ID', 'CompanyName', 'DateCreated', 'DateEdited'],
+    currencies_list:       ['ID', 'CurrencyName', 'CurrencySymbol', 'CurrencyCode'],
+    // Drop TypeIcon — it's an HTML <i> tag that the model often mistakes
+    // for instruction markup.
+    document_types_list:   ['ID', 'TypeName', 'TypeNameSingular', 'TypeColour', 'NumberOfOutstandingDocuments', 'NumberOfTemplates'],
+    settings_merge_tags:   ['ID', 'Name', 'Tag', 'Fallback', 'Archived'],
+    // Singletons — `data` is an object, not an array. Same projection
+    // mechanism still applies via the `else if` branch in reduceToolResult.
+    settings_get:          ['CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'TimeZone', 'DateEdited', 'CustomerJourneysActive', 'CustomerJourneysDefault'],
+    settings_brand:        ['ID', 'Name', 'CompanyName', 'Default', 'PageTitle', 'CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'ShowBadge', 'DateCreated', 'DateEdited'],
+};
+
+// Where we drop full raw tool responses for this process. Useful for
+// debugging and for the web app's "show me what the model actually saw"
+// affordance, without putting megabytes of JSON into the LLM context.
+const RAW_DIR = join(tmpdir(), 'betterproposals-ai', `${process.pid}-${Date.now()}`);
+let rawDirReady = false;
+let rawCallIndex = 0;
+
+function saveRawToolResponse(toolName, content) {
+    if (!rawDirReady) {
+        mkdirSync(RAW_DIR, { recursive: true });
+        rawDirReady = true;
+    }
+    const path = join(RAW_DIR, `${String(rawCallIndex++).padStart(3, '0')}-${toolName}.json`);
+    writeFileSync(path, content, 'utf8');
+    return path;
+}
+
+function projectItem(item, fields) {
+    const out = {};
+    for (const k of fields) {
+        if (k in item) out[k] = item[k];
+    }
+    return out;
+}
+
+// Reduce a raw tool response to what the model actually needs: project to
+// key fields and cap the size of any `data` array. Always preserves
+// `{status, data, _note, _total}` shape so existing JSON parsers work.
+function reduceToolResult(toolName, content, savedPath, maxItems) {
+    const fields = TOOL_PROJECTIONS[toolName];
+    try {
+        const obj = JSON.parse(content);
+
+        if (Array.isArray(obj?.data)) {
+            const total = obj.data.length;
+            const sliced = obj.data.slice(0, maxItems);
+            obj.data = fields ? sliced.map((it) => projectItem(it, fields)) : sliced;
+            obj._note = total > maxItems
+                ? `Showing first ${maxItems} of ${total} items, sorted newest-first${fields ? ', projected to key fields only' : ''}. Full raw JSON at ${savedPath}.`
+                : `${fields ? 'Projected to key fields only. ' : ''}Full raw JSON at ${savedPath}.`;
+            if (total > maxItems) obj._total = total;
+            return JSON.stringify(obj);
+        }
+
+        if (fields && obj && typeof obj.data === 'object' && obj.data !== null) {
+            obj.data = projectItem(obj.data, fields);
+            obj._note = `Projected to key fields only. Full raw JSON at ${savedPath}.`;
+            return JSON.stringify(obj);
+        }
+
+        return content;
+    } catch {
+        return content;
+    }
+}
+
 async function invokeTool(call) {
     const name = call.function?.name;
     const tool = TOOLS_BY_NAME[name];
@@ -118,7 +228,7 @@ async function invokeTool(call) {
     }
 }
 
-async function callOllama({ endpoint, model, messages, tools, timeoutMs }) {
+async function callOllama({ endpoint, model, messages, tools, timeoutMs, numCtx }) {
     // Use our own AbortSignal as the single source of truth for timing,
     // and disable Bun's built-in ~5min fetch timeout via `timeout: false`
     // (no-op on Node/undici, the fix on Bun). `signal.aborted` lets us
@@ -129,7 +239,10 @@ async function callOllama({ endpoint, model, messages, tools, timeoutMs }) {
         response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, messages, tools, stream: false }),
+            body: JSON.stringify({
+                model, messages, tools, stream: false,
+                options: { num_ctx: numCtx },
+            }),
             signal,
             timeout: false,
         });
@@ -160,9 +273,11 @@ export async function runAgent({
     prompt,
     endpoint = process.env.BETTERPROPOSALS_LLAMA_URL || DEFAULT_ENDPOINT,
     model = process.env.BETTERPROPOSALS_LLAMA_MODEL || DEFAULT_MODEL,
-    system = DEFAULT_SYSTEM,
+    system = buildDefaultSystem(),
     maxIterations = DEFAULT_MAX_ITERATIONS,
     timeoutMs = Number(process.env.BETTERPROPOSALS_LLAMA_TIMEOUT) * 1000 || DEFAULT_REQUEST_TIMEOUT_MS,
+    numCtx = Number(process.env.BETTERPROPOSALS_LLAMA_NUM_CTX) || DEFAULT_NUM_CTX,
+    maxToolResultItems = Number(process.env.BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS) || DEFAULT_MAX_TOOL_RESULT_ITEMS,
     onEvent,
 } = {}) {
     if (!prompt || typeof prompt !== 'string') {
@@ -177,7 +292,7 @@ export async function runAgent({
     const trace = [];
 
     for (let i = 0; i < maxIterations; i++) {
-        const data = await callOllama({ endpoint, model, messages, tools, timeoutMs });
+        const data = await callOllama({ endpoint, model, messages, tools, timeoutMs, numCtx });
         const msg = data.message;
         messages.push(msg);
         onEvent?.({ type: 'assistant', iteration: i, content: msg.content, tool_calls: msg.tool_calls });
@@ -188,13 +303,21 @@ export async function runAgent({
 
         for (const call of msg.tool_calls) {
             const { content } = await invokeTool(call);
-            messages.push({ role: 'tool', content });
+            const name = call.function?.name;
+            const rawPath = saveRawToolResponse(name, content);
+            const slim = reduceToolResult(name, content, rawPath, maxToolResultItems);
+            // Include `name` on tool messages: most chat templates (qwen,
+            // llama, mistral, etc.) handle the tool role much better when
+            // they know which tool produced the result. Without it, weaker
+            // models often mistake the JSON for user input.
+            messages.push({ role: 'tool', name, content: slim });
             trace.push({
-                tool: call.function?.name,
+                tool: name,
                 arguments: call.function?.arguments,
-                result: content,
+                result: slim,
+                raw_path: rawPath,
             });
-            onEvent?.({ type: 'tool_result', name: call.function?.name, content });
+            onEvent?.({ type: 'tool_result', name, content: slim, raw_path: rawPath });
         }
     }
 
