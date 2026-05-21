@@ -499,6 +499,7 @@ program
     .option('--timeout <seconds>', 'Per-request timeout in seconds (env: BETTERPROPOSALS_LLAMA_TIMEOUT)')
     .option('--num-ctx <n>', 'Ollama context window in tokens (env: BETTERPROPOSALS_LLAMA_NUM_CTX)')
     .option('--max-tool-items <n>', 'Max items kept from a tool result `data` array (env: BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS)')
+    .option('--session <id>', 'Persist conversation history under this ID so multi-turn chat works across invocations (env: BETTERPROPOSALS_LLAMA_SESSION)')
     .option('--json', 'Output a structured JSON object including the tool-call trace')
     .action(async (prompt, opts) => {
         try {
@@ -511,6 +512,7 @@ program
                 timeoutMs: opts.timeout ? Number(opts.timeout) * 1000 : undefined,
                 numCtx: opts.numCtx ? Number(opts.numCtx) : undefined,
                 maxToolResultItems: opts.maxToolItems ? Number(opts.maxToolItems) : undefined,
+                sessionId: opts.session,
             });
             if (opts.json) {
                 console.log(JSON.stringify(result, null, 2));
