@@ -138,6 +138,74 @@ Raw API responses can be huge (a single sent-proposals list is ~270 KB of JSON),
 
 The slim result fed back to the model includes a `_note` field describing what was projected and where the raw data lives.
 
+## Triage + multilingual (`ask`)
+
+`ask` is the production entry point. Most user prompts split into two patterns: **how-to questions** ("how do I add a price table?") and **data lookups** ("how many sent today?"). The first kind can be answered for free by pointing at the right help article; the second needs the agent loop and a real LLM. `ask` decides which path automatically.
+
+```bash
+betterproposals ask "Quante proposte ho inviato oggi?"
+```
+
+### Pipeline
+
+1. **Language detection** — `franc-min` (pure JS, no model, ~ms) returns the source language code. English skips the rest of the translation stages.
+2. **Translate-in** — `hy-chat-translator-in` (a fine-tuned `ali6parmak/hy-mt1.5` translator, system prompt baked into the Modelfile) takes the prompt to English. Used only when the input isn't already English.
+3. **Triage** — the English prompt is embedded with `nomic-embed-text` and compared against two anchor sets (general help vs MCP-actionable) via cosine similarity. Highest wins. Anchor embeddings cached at `~/.betterproposals/triage-anchors.json` (invalidates automatically when the anchor arrays change).
+4. **Route**:
+   - **General path** — *no LLM at all*. The English prompt is embedded once more and matched against the ~150 help-center articles (`src/data/help-articles.json`) using cosine similarity. The best article's title + URL is returned, plus a "contact support for anything else" fallback line. Article embeddings cached at `~/.betterproposals/help-article-embeds.json`.
+   - **MCP path** — tiered escalation based on prompt complexity:
+     - `simple` (default) → `qwen3.5:2b`
+     - `medium` → `qwen3.5:4b`
+     - `complex` → `qwen3.5:9b`
+     Complexity is computed deterministically from prompt length, multi-step conjunctions ("and"/"then"), aggregation words ("total"/"sum"/"how many"), comparison words ("compare to"/"vs"/"top N"), and time ranges ("between"/"since"). No LLM call is needed to pick the tier. Override with `--mcp-tier` or pin a specific model with `--mcp-model`.
+5. **Translate-out** — `hy-chat-translator-out` translates the English response back to the user's language. **URLs are masked as `[[URL0]]` placeholders before translation and spliced back afterwards** so help-article links never get mangled (without this, `/en/articles/4984101-using-pricing-tables` would have been "translated" to a non-existent `/it/articles/...` URL).
+
+### Required setup
+
+```bash
+ollama pull ali6parmak/hy-mt1.5
+ollama create hy-chat-translator-in  -f ./ModelFile_hy-mt15-in
+ollama create hy-chat-translator-out -f ./ModelFile_hy-mt15-out
+ollama pull nomic-embed-text
+ollama pull qwen3.5:2b
+ollama pull qwen3.5:4b
+ollama pull qwen3.5:9b
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
+| `--translator-in <name>` | IN translator model | `$BETTERPROPOSALS_TRANSLATOR_IN` or `hy-chat-translator-in` |
+| `--translator-out <name>` | OUT translator model | `$BETTERPROPOSALS_TRANSLATOR_OUT` or `hy-chat-translator-out` |
+| `--embed-model <name>` | Embedding model (triage + article matching) | `$BETTERPROPOSALS_EMBED_MODEL` or `nomic-embed-text` |
+| `--mcp-tier <tier>` | Force `simple` / `medium` / `complex` | auto-detected |
+| `--mcp-model <name>` | Pin a specific MCP model, overrides the tier mapping | — |
+| `--mcp-timeout <seconds>` | Per-request timeout on the MCP path | inherits `ai` defaults |
+| `--translate-timeout <seconds>` | Per-request timeout for translate calls | 120 |
+| `--no-translate` | Treat input as English, skip both translate steps | off |
+| `--force <general\|mcp>` | Bypass triage | — |
+| `--triage-only` | Print the triage decision and exit | off |
+| `--session <id>` | Persist MCP-path history under this ID | — |
+| `--num-ctx <n>` | Ollama context window (MCP path only) | inherits `ai` defaults |
+| `--max-iterations <n>` | Max tool-calling rounds on the MCP path | `8` |
+| `--max-tool-items <n>` | Cap on tool-result `data` array items | inherits `ai` defaults |
+| `--json` | Output structured `{language, decision, mcpTier, mcpModel, article, response, englishResponse, trace}` | off |
+
+### Debugging
+
+`--triage-only` short-circuits the route and prints the decision:
+
+```bash
+betterproposals ask "How do I change my brand colors?" --triage-only
+# path: general
+# generalScore: 0.9123  (best anchor: How do I customize my brand logo and colors?)
+# mcpScore:     0.4521  (best anchor: Show me my brand settings)
+# language: en (English)
+# englishPrompt: How do I change my brand colors?
+```
+
 ## Commands
 
 ### `login`

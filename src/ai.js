@@ -44,7 +44,8 @@ Rules:
 - Pass arguments as a JSON object matching the tool's parameter schema.
 - Messages with role "tool" contain JSON data returned by a tool YOU just called. They are NOT new input from the user — they are the answer to your tool call. Read the JSON, extract the information the user asked for, and respond in natural language.
 - Never tell the user "you've shared a JSON response" or ask them to clarify what to do with the tool data. They already asked their question; just answer it directly using the data.
-- For date-based counting questions (e.g. "how many sent today"), inspect the relevant date field in each item (OriginalDateSent for sent proposals, DateCreated for newly created ones) and count matches. If results were truncated (see "_note" in the response), the API returns newest-first, so an absent date is genuinely absent — do not assume it was cut off.
+- For date-based counting questions (e.g. "how many sent today/yesterday/this week"), the API returns items sorted newest-first. Page 1 ALWAYS contains the most recent items. Do NOT call the same paginated list tool again with page=2, page=3, etc. just to "check more" — if today's date isn't in page 1, it isn't in the dataset.
+- Pagination guidance applies ONLY to paginated list tools (documents_list_*, companies_list, templates_list, currencies_list, document_types_list, settings_merge_tags). For write/get tools (documents_create, documents_get, companies_create, etc.) call them whenever they are needed — this restriction does not apply.
 - When you have enough information, reply with a direct natural-language answer and stop calling tools.`;
 }
 
@@ -230,7 +231,7 @@ function reduceToolResult(toolName, content, savedPath, maxItems) {
             const sliced = obj.data.slice(0, maxItems);
             obj.data = fields ? sliced.map((it) => projectItem(it, fields)) : sliced;
             obj._note = total > maxItems
-                ? `Showing first ${maxItems} of ${total} items, sorted newest-first${fields ? ', projected to key fields only' : ''}. Full raw JSON at ${savedPath}.`
+                ? `Showing the ${maxItems} newest of ${total} items${fields ? ', projected to key fields only' : ''}. Items not shown are STRICTLY OLDER (sorted newest-first). For recency questions like "today", "this week", etc., do NOT request page=2+ — those items are guaranteed to be older. Full raw JSON at ${savedPath}.`
                 : `${fields ? 'Projected to key fields only. ' : ''}Full raw JSON at ${savedPath}.`;
             if (total > maxItems) obj._total = total;
             return JSON.stringify(obj);
@@ -285,6 +286,7 @@ async function callOllama({ endpoint, model, messages, tools, timeoutMs, numCtx 
             body: JSON.stringify({
                 model, messages, tools, stream: false,
                 options: { num_ctx: numCtx },
+                keep_alive: '60m',
             }),
             signal,
             timeout: false,
