@@ -4,6 +4,7 @@ import { login, logout } from './auth.js';
 import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
 import { install, uninstall, TARGETS } from './mcp-install.js';
 import { runAgent } from './ai.js';
+import { ask } from './ask.js';
 
 const program = new Command();
 
@@ -516,6 +517,62 @@ program
             });
             if (opts.json) {
                 console.log(JSON.stringify(result, null, 2));
+            } else {
+                console.log(result.response);
+            }
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command('ask <prompt>')
+    .description('Triage a prompt: article match for how-to questions, MCP agent (tiered qwen3.5) for actions on your account data')
+    .option('--endpoint <url>', 'Ollama-compatible chat endpoint (env: BETTERPROPOSALS_LLAMA_URL)')
+    .option('--translator-in <name>', 'Model used to translate user input → English (env: BETTERPROPOSALS_TRANSLATOR_IN)')
+    .option('--translator-out <name>', 'Model used to translate response → user language (env: BETTERPROPOSALS_TRANSLATOR_OUT)')
+    .option('--embed-model <name>', 'Model used for triage + article embeddings (env: BETTERPROPOSALS_EMBED_MODEL)')
+    .option('--mcp-model <name>', 'Explicit MCP model — overrides the tier-based auto-selection')
+    .option('--mcp-tier <tier>', 'Force MCP tier: simple (qwen3.5:2b), medium (qwen3.5:4b), or complex (qwen3.5:9b)')
+    .option('--mcp-timeout <seconds>', 'Per-request timeout for the MCP model in seconds')
+    .option('--translate-timeout <seconds>', 'Per-request timeout for translation calls in seconds')
+    .option('--no-translate', 'Skip the language roundtrip (treat input as English)')
+    .option('--force <path>', 'Bypass triage: "general" or "mcp"')
+    .option('--triage-only', 'Print the triage decision without running the route')
+    .option('--session <id>', 'Persist conversation history (only used on the MCP path)')
+    .option('--num-ctx <n>', 'Ollama context window in tokens (MCP path only)')
+    .option('--max-iterations <n>', 'Max tool-calling rounds on the MCP path', '8')
+    .option('--max-tool-items <n>', 'Max items kept from a tool result `data` array on the MCP path')
+    .option('--json', 'Output the structured ask result (path, scores, response, trace) as JSON')
+    .action(async (prompt, opts) => {
+        try {
+            const result = await ask({
+                prompt,
+                endpoint: opts.endpoint,
+                translatorInModel: opts.translatorIn,
+                translatorOutModel: opts.translatorOut,
+                embedModel: opts.embedModel,
+                mcpModel: opts.mcpModel,
+                mcpTier: opts.mcpTier,
+                mcpTimeoutMs: opts.mcpTimeout ? Number(opts.mcpTimeout) * 1000 : undefined,
+                translateTimeoutMs: opts.translateTimeout ? Number(opts.translateTimeout) * 1000 : undefined,
+                translate: opts.translate,
+                force: opts.force,
+                triageOnly: opts.triageOnly,
+                sessionId: opts.session,
+                numCtx: opts.numCtx ? Number(opts.numCtx) : undefined,
+                maxIterations: opts.maxIterations ? Number(opts.maxIterations) : undefined,
+                maxToolResultItems: opts.maxToolItems ? Number(opts.maxToolItems) : undefined,
+            });
+            if (opts.json) {
+                console.log(JSON.stringify(result, null, 2));
+            } else if (opts.triageOnly) {
+                console.log(`path: ${result.decision.path}`);
+                console.log(`generalScore: ${result.decision.generalScore?.toFixed(4) ?? 'n/a'}  (best anchor: ${result.decision.generalBest ?? 'n/a'})`);
+                console.log(`mcpScore:     ${result.decision.mcpScore?.toFixed(4) ?? 'n/a'}  (best anchor: ${result.decision.mcpBest ?? 'n/a'})`);
+                console.log(`language: ${result.language} (${result.languageName})`);
+                console.log(`englishPrompt: ${result.englishPrompt}`);
             } else {
                 console.log(result.response);
             }
