@@ -138,8 +138,8 @@ In OpenRouter mode **every stage** runs in the cloud — no local Ollama is requ
 | `ask` translation (both directions) | `hy-chat-translator-in/out` | `deepseek/deepseek-v4-flash` |
 | `ask` triage + article embeddings | `nomic-embed-text` | `openai/text-embedding-3-small` |
 | `ask` MCP agent — simple | `qwen3.5:2b` | `qwen/qwen3.5-9b` |
-| `ask` MCP agent — medium | `qwen3.5:4b` | `google/gemma-4-26b-a4b-it` |
-| `ask` MCP agent — complex | `qwen3.5:9b` | `mistralai/mistral-small-2603` |
+| `ask` MCP agent — medium | `qwen3.5:4b` | `mistralai/mistral-small-2603` |
+| `ask` MCP agent — complex | `qwen3.5:9b` | `qwen/qwen3.6-plus` |
 
 Override any of these with `--model` (ai), `--mcp-model` / `--mcp-tier` (ask agent), `--translator-in` / `--translator-out` (ask translation), or `--embed-model` (ask triage/articles).
 

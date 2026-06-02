@@ -34,7 +34,7 @@ const STAGE_DEFAULTS = {
         translatorIn: 'deepseek/deepseek-v4-flash',
         translatorOut: 'deepseek/deepseek-v4-flash',
         embed: 'openai/text-embedding-3-small',
-        mcp: { simple: 'qwen/qwen3.5-9b', medium: 'google/gemma-4-26b-a4b-it', complex: 'mistralai/mistral-small-2603' },
+        mcp: { simple: 'qwen/qwen3.5-9b', medium: 'mistralai/mistral-small-2603', complex: 'qwen/qwen3.6-plus' },
     },
 };
 
