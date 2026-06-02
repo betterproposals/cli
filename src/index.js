@@ -494,6 +494,7 @@ program
     .command('ai <prompt>')
     .description('Send a natural-language prompt to a Llama (Ollama-compatible) endpoint with access to all Better Proposals tools')
     .option('--endpoint <url>', 'Ollama-compatible chat endpoint (env: BETTERPROPOSALS_LLAMA_URL)')
+    .option('--openrouter', 'Use the OpenRouter API instead of local Ollama (needs OPENROUTER_API_KEY; default model qwen/qwen3.5-9b)')
     .option('--model <name>', 'Model name to use (env: BETTERPROPOSALS_LLAMA_MODEL)')
     .option('--system <text>', 'Override the default system prompt')
     .option('--max-iterations <n>', 'Maximum tool-calling rounds before giving up', '8')
@@ -506,6 +507,7 @@ program
         try {
             const result = await runAgent({
                 prompt,
+                provider: opts.openrouter ? 'openrouter' : undefined,
                 endpoint: opts.endpoint,
                 model: opts.model,
                 system: opts.system,
@@ -529,12 +531,13 @@ program
 program
     .command('ask <prompt>')
     .description('Triage a prompt: article match for how-to questions, MCP agent (tiered qwen3.5) for actions on your account data')
-    .option('--endpoint <url>', 'Ollama-compatible chat endpoint (env: BETTERPROPOSALS_LLAMA_URL)')
+    .option('--endpoint <url>', 'Ollama-compatible chat endpoint for translation + embeddings (env: BETTERPROPOSALS_LLAMA_URL)')
+    .option('--openrouter', 'Run the whole pipeline on OpenRouter — translation, embeddings, and agent (needs OPENROUTER_API_KEY; no local Ollama required)')
     .option('--translator-in <name>', 'Model used to translate user input → English (env: BETTERPROPOSALS_TRANSLATOR_IN)')
     .option('--translator-out <name>', 'Model used to translate response → user language (env: BETTERPROPOSALS_TRANSLATOR_OUT)')
     .option('--embed-model <name>', 'Model used for triage + article embeddings (env: BETTERPROPOSALS_EMBED_MODEL)')
     .option('--mcp-model <name>', 'Explicit MCP model — overrides the tier-based auto-selection')
-    .option('--mcp-tier <tier>', 'Force MCP tier: simple (qwen3.5:2b), medium (qwen3.5:4b), or complex (qwen3.5:9b)')
+    .option('--mcp-tier <tier>', 'Force MCP tier: simple / medium / complex (model per tier depends on provider)')
     .option('--mcp-timeout <seconds>', 'Per-request timeout for the MCP model in seconds')
     .option('--translate-timeout <seconds>', 'Per-request timeout for translation calls in seconds')
     .option('--no-translate', 'Skip the language roundtrip (treat input as English)')
@@ -549,6 +552,7 @@ program
         try {
             const result = await ask({
                 prompt,
+                provider: opts.openrouter ? 'openrouter' : undefined,
                 endpoint: opts.endpoint,
                 translatorInModel: opts.translatorIn,
                 translatorOutModel: opts.translatorOut,

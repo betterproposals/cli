@@ -1,18 +1,35 @@
 import { franc } from 'franc-min';
-import { ollamaChat } from './ollama.js';
+import { chatText } from './provider.js';
 
-// Language roundtrip using two dedicated translation models:
-//   - `hy-chat-translator-in`  : any language → English
-//   - `hy-chat-translator-out` : English → target language
-// (both built from `ali6parmak/hy-mt1.5`; the system prompts live in the
-// Modelfiles in the repo root, so we don't send our own here)
+// Language roundtrip.
+//   - Ollama mode: two dedicated local translator models
+//       `hy-chat-translator-in`  : any language → English
+//       `hy-chat-translator-out` : English → target language
+//     (built from `ali6parmak/hy-mt1.5`; system prompts live in the
+//     Modelfiles in the repo root, so we don't resend them).
+//   - OpenRouter mode: a single general model (deepseek/deepseek-v4-flash
+//     by default) does both directions, with the equivalent system prompts
+//     sent in-request — the custom Modelfile models can't run on cloud.
 //
-// Language detection runs on the JS side via `franc-min` — fast, no LLM
-// roundtrip, and the translator models don't expose the source language
-// so we can't recover it from them.
+// Language detection always runs locally via `franc-min` — fast, no LLM
+// roundtrip, and the translator models don't expose the source language.
 
 const DEFAULT_TRANSLATOR_IN = 'hy-chat-translator-in';
 const DEFAULT_TRANSLATOR_OUT = 'hy-chat-translator-out';
+
+// System prompts mirroring ModelFile_hy-mt15-in / -out, sent in-request
+// when translating via OpenRouter (where the custom models aren't available).
+const IN_SYSTEM = `You are a raw machine translation endpoint. Your ONLY task is to translate the input text into natural English.
+- Do NOT reply to the user message.
+- Do NOT explain anything.
+- Do NOT add introductory phrases like "The translation is:".
+- Output ONLY the final English text.`;
+
+const OUT_SYSTEM = `You are a machine translation engine.
+The user will provide a target language and an English phrase.
+Your ONLY job is to translate that English phrase into the requested target language.
+- Output ONLY the final translated text.
+- Do not include any greeting, intro, or explanations.`;
 
 // franc-min returns ISO 639-3 codes. Map the common ones to ISO 639-1
 // + the English name we pass to the OUT translator.
@@ -202,9 +219,13 @@ export function detectLanguage(text) {
     return LANGUAGES_BY_639_3[code] ?? LANGUAGES_BY_639_1.en;
 }
 
-export async function translateToEnglish(text, { endpoint, model = DEFAULT_TRANSLATOR_IN, timeoutMs }) {
-    const messages = [{ role: 'user', content: text }];
-    const raw = await ollamaChat({ endpoint, model, messages, timeoutMs });
+export async function translateToEnglish(text, { provider = 'ollama', endpoint, apiKey, model = DEFAULT_TRANSLATOR_IN, timeoutMs }) {
+    // Ollama's custom model has the system prompt baked in; OpenRouter
+    // needs it sent explicitly.
+    const messages = provider === 'openrouter'
+        ? [{ role: 'system', content: IN_SYSTEM }, { role: 'user', content: text }]
+        : [{ role: 'user', content: text }];
+    const raw = await chatText({ provider, endpoint, apiKey, model, messages, timeoutMs });
     return raw.trim();
 }
 
@@ -226,23 +247,26 @@ function restoreUrls(text, urls) {
     return text.replace(/\[\[URL(\d+)\]\]/g, (_, i) => urls[Number(i)] ?? `[[URL${i}]]`);
 }
 
-export async function translateFromEnglish(text, targetLang, { endpoint, model = DEFAULT_TRANSLATOR_OUT, timeoutMs }) {
+export async function translateFromEnglish(text, targetLang, { provider = 'ollama', endpoint, apiKey, model = DEFAULT_TRANSLATOR_OUT, timeoutMs }) {
     const lang = resolveLanguage(targetLang);
     if (!lang || lang.iso639_1 === 'en') return text;
     const { masked, urls } = protectUrls(text);
-    // OUT modelfile's SYSTEM tells the model the user message will be
-    // "<TargetLanguage>: <English phrase>". Stick to that contract.
-    const messages = [{ role: 'user', content: `${lang.name}: ${masked}` }];
-    const raw = await ollamaChat({ endpoint, model, messages, timeoutMs });
+    // Both modes use the same "<TargetLanguage>: <English phrase>" user
+    // contract; OpenRouter additionally gets the OUT system prompt.
+    const userMsg = { role: 'user', content: `${lang.name}: ${masked}` };
+    const messages = provider === 'openrouter'
+        ? [{ role: 'system', content: OUT_SYSTEM }, userMsg]
+        : [userMsg];
+    const raw = await chatText({ provider, endpoint, apiKey, model, messages, timeoutMs });
     return restoreUrls(raw.trim(), urls);
 }
 
 // Compatibility shim for older callers that expect a single function
 // returning {language, english}. Detection is local now; translation is
 // only invoked when the language isn't English.
-export async function detectAndTranslate(text, { endpoint, model = DEFAULT_TRANSLATOR_IN, timeoutMs }) {
+export async function detectAndTranslate(text, { provider = 'ollama', endpoint, apiKey, model = DEFAULT_TRANSLATOR_IN, timeoutMs }) {
     const lang = detectLanguage(text);
     if (lang.iso639_1 === 'en') return { language: 'en', english: text };
-    const english = await translateToEnglish(text, { endpoint, model, timeoutMs });
+    const english = await translateToEnglish(text, { provider, endpoint, apiKey, model, timeoutMs });
     return { language: lang.iso639_1, english };
 }

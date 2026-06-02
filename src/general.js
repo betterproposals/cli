@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { ollamaEmbed } from './ollama.js';
+import { embedText } from './provider.js';
 import { cosineSimilarity } from './triage.js';
 
 // "General" path: no LLM. The user's English question is embedded and
@@ -20,7 +20,13 @@ import { cosineSimilarity } from './triage.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ARTICLES_PATH = join(__dirname, 'data', 'help-articles.json');
-const ARTICLE_EMBEDS_CACHE = join(homedir(), '.betterproposals', 'help-article-embeds.json');
+
+// Cache keyed by embed model so local (nomic, 768-dim) and OpenRouter
+// (text-embedding-3-small, 1536-dim) vectors don't collide.
+function articleEmbedsCachePath(embedModel) {
+    const safe = String(embedModel).replace(/[^A-Za-z0-9._-]/g, '_');
+    return join(homedir(), '.betterproposals', `help-article-embeds-${safe}.json`);
+}
 
 let cachedArticles = null;
 function loadArticles() {
@@ -47,13 +53,14 @@ function articlesFingerprint(articles) {
     return `${EMBED_FORMAT_VERSION}::${articles.length}::${articles[0]?.url}::${articles[articles.length - 1]?.url}`;
 }
 
-async function ensureArticleEmbeddings({ embedEndpoint, embedModel }) {
+async function ensureArticleEmbeddings({ provider, embedEndpoint, apiKey, embedModel }) {
     const articles = loadArticles();
     const fingerprint = articlesFingerprint(articles);
+    const cachePath = articleEmbedsCachePath(embedModel);
 
-    if (existsSync(ARTICLE_EMBEDS_CACHE)) {
+    if (existsSync(cachePath)) {
         try {
-            const cached = JSON.parse(readFileSync(ARTICLE_EMBEDS_CACHE, 'utf8'));
+            const cached = JSON.parse(readFileSync(cachePath, 'utf8'));
             if (cached.model === embedModel && cached.fingerprint === fingerprint) {
                 return cached.embeddings;
             }
@@ -62,24 +69,26 @@ async function ensureArticleEmbeddings({ embedEndpoint, embedModel }) {
         }
     }
 
-    const embeddings = await ollamaEmbed({
+    const embeddings = await embedText({
+        provider,
         endpoint: embedEndpoint,
+        apiKey,
         model: embedModel,
         input: articles.map(articleText),
     });
-    mkdirSync(dirname(ARTICLE_EMBEDS_CACHE), { recursive: true });
+    mkdirSync(dirname(cachePath), { recursive: true });
     writeFileSync(
-        ARTICLE_EMBEDS_CACHE,
+        cachePath,
         JSON.stringify({ model: embedModel, fingerprint, embeddings }),
         'utf8',
     );
     return embeddings;
 }
 
-export async function findBestArticle(query, { embedEndpoint, embedModel }) {
+export async function findBestArticle(query, { provider = 'ollama', embedEndpoint, apiKey, embedModel }) {
     const articles = loadArticles();
-    const embeddings = await ensureArticleEmbeddings({ embedEndpoint, embedModel });
-    const queryEmbed = await ollamaEmbed({ endpoint: embedEndpoint, model: embedModel, input: query });
+    const embeddings = await ensureArticleEmbeddings({ provider, embedEndpoint, apiKey, embedModel });
+    const queryEmbed = await embedText({ provider, endpoint: embedEndpoint, apiKey, model: embedModel, input: query });
 
     let bestIdx = -1;
     let bestScore = -Infinity;
@@ -93,8 +102,8 @@ export async function findBestArticle(query, { embedEndpoint, embedModel }) {
     return { article: articles[bestIdx], score: bestScore };
 }
 
-export async function runGeneralAgent({ prompt, embedEndpoint, embedModel }) {
-    const { article, score } = await findBestArticle(prompt, { embedEndpoint, embedModel });
+export async function runGeneralAgent({ prompt, provider = 'ollama', embedEndpoint, apiKey, embedModel }) {
+    const { article, score } = await findBestArticle(prompt, { provider, embedEndpoint, apiKey, embedModel });
     const body =
         `Here's a help article that should answer your question:\n\n` +
         `**${article.title}** (${article.category})\n${article.url}\n\n` +

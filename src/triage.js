@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
-import { ollamaEmbed } from './ollama.js';
+import { embedText } from './provider.js';
 
 // Vector-cosine-similarity triage. The user prompt (translated to English
 // first) is embedded once, then compared against two pre-embedded anchor
@@ -85,7 +85,13 @@ export const MCP_ANCHORS = [
     'Create a new document type called Quote',
 ];
 
-const ANCHORS_CACHE_PATH = join(homedir(), '.betterproposals', 'triage-anchors.json');
+// Cache keyed by embed model: nomic (768-dim, local) and
+// text-embedding-3-small (1536-dim, OpenRouter) produce incompatible
+// vectors, so switching providers must not reuse the other's cache.
+function anchorsCachePath(embedModel) {
+    const safe = String(embedModel).replace(/[^A-Za-z0-9._-]/g, '_');
+    return join(homedir(), '.betterproposals', `triage-anchors-${safe}.json`);
+}
 
 // Lightweight fingerprint to invalidate the cache when anchor arrays
 // change. Doesn't need to be cryptographic — collisions just mean a
@@ -111,11 +117,12 @@ export function cosineSimilarity(a, b) {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function ensureAnchorEmbeddings({ embedEndpoint, embedModel }) {
+async function ensureAnchorEmbeddings({ provider, embedEndpoint, apiKey, embedModel }) {
     const fingerprint = anchorsFingerprint();
-    if (existsSync(ANCHORS_CACHE_PATH)) {
+    const cachePath = anchorsCachePath(embedModel);
+    if (existsSync(cachePath)) {
         try {
-            const cached = JSON.parse(readFileSync(ANCHORS_CACHE_PATH, 'utf8'));
+            const cached = JSON.parse(readFileSync(cachePath, 'utf8'));
             if (cached.model === embedModel && cached.fingerprint === fingerprint) {
                 return cached;
             }
@@ -124,9 +131,9 @@ async function ensureAnchorEmbeddings({ embedEndpoint, embedModel }) {
         }
     }
 
-    // Ollama's /api/embed accepts an array of inputs in one call.
-    const generalEmbeds = await ollamaEmbed({ endpoint: embedEndpoint, model: embedModel, input: GENERAL_ANCHORS });
-    const mcpEmbeds = await ollamaEmbed({ endpoint: embedEndpoint, model: embedModel, input: MCP_ANCHORS });
+    // Both providers' embed endpoints accept an array of inputs in one call.
+    const generalEmbeds = await embedText({ provider, endpoint: embedEndpoint, apiKey, model: embedModel, input: GENERAL_ANCHORS });
+    const mcpEmbeds = await embedText({ provider, endpoint: embedEndpoint, apiKey, model: embedModel, input: MCP_ANCHORS });
 
     const data = {
         model: embedModel,
@@ -134,14 +141,14 @@ async function ensureAnchorEmbeddings({ embedEndpoint, embedModel }) {
         general: generalEmbeds,
         mcp: mcpEmbeds,
     };
-    mkdirSync(dirname(ANCHORS_CACHE_PATH), { recursive: true });
-    writeFileSync(ANCHORS_CACHE_PATH, JSON.stringify(data), 'utf8');
+    mkdirSync(dirname(cachePath), { recursive: true });
+    writeFileSync(cachePath, JSON.stringify(data), 'utf8');
     return data;
 }
 
-export async function triage(prompt, { embedEndpoint, embedModel = DEFAULT_EMBED_MODEL } = {}) {
-    const anchors = await ensureAnchorEmbeddings({ embedEndpoint, embedModel });
-    const promptEmbed = await ollamaEmbed({ endpoint: embedEndpoint, model: embedModel, input: prompt });
+export async function triage(prompt, { provider = 'ollama', embedEndpoint, apiKey, embedModel = DEFAULT_EMBED_MODEL } = {}) {
+    const anchors = await ensureAnchorEmbeddings({ provider, embedEndpoint, apiKey, embedModel });
+    const promptEmbed = await embedText({ provider, endpoint: embedEndpoint, apiKey, model: embedModel, input: prompt });
 
     let generalScore = -Infinity;
     let generalBest = null;

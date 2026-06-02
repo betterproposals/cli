@@ -1,30 +1,41 @@
 import { detectLanguage, translateToEnglish, translateFromEnglish } from './translate.js';
-import { triage, DEFAULT_EMBED_MODEL } from './triage.js';
+import { triage } from './triage.js';
 import { runGeneralAgent } from './general.js';
 import { runAgent } from './ai.js';
+import { resolveProvider, resolveApiKey } from './provider.js';
 
 // Orchestrator for `betterproposals ask`. Flow:
 //   1. detect input language locally (franc-min, no LLM)
-//   2. translate to English via hy-chat-translator-in (if not already English)
+//   2. translate to English (if not already English)
 //   3. embedding-based triage → 'general' or 'mcp'
 //   4. route:
-//        general → article-matching (no LLM, instant)
-//        mcp     → agent loop with a tiered qwen3.5 model picked by complexity
-//   5. translate response back via hy-chat-translator-out (if not English)
+//        general → article-matching (no agent LLM)
+//        mcp     → agent loop with a tiered model picked by complexity
+//   5. translate response back to the user's language (if not English)
 //
-// All translation/embedding endpoints share the same Ollama host. The
-// translation step is skipped automatically when the detected source is
-// English, saving a roundtrip on the common case.
+// In Ollama mode every stage hits the local server. In OpenRouter mode
+// ALL stages outsource to the cloud — translation (deepseek), embeddings
+// (text-embedding-3-small), and the agent (tiered) — so no local Ollama is
+// required at all. The translation step is skipped when the source is
+// already English.
 
 const DEFAULT_ENDPOINT = 'http://localhost:11434/api/chat';
-const DEFAULT_TRANSLATOR_IN = 'hy-chat-translator-in';
-const DEFAULT_TRANSLATOR_OUT = 'hy-chat-translator-out';
 const DEFAULT_TRANSLATE_TIMEOUT_MS = 120_000;
 
-const MCP_TIERS = {
-    simple: 'qwen3.5:2b',
-    medium: 'qwen3.5:4b',
-    complex: 'qwen3.5:9b',
+// Per-provider model defaults for each stage.
+const STAGE_DEFAULTS = {
+    ollama: {
+        translatorIn: 'hy-chat-translator-in',
+        translatorOut: 'hy-chat-translator-out',
+        embed: 'nomic-embed-text',
+        mcp: { simple: 'qwen3.5:2b', medium: 'qwen3.5:4b', complex: 'qwen3.5:9b' },
+    },
+    openrouter: {
+        translatorIn: 'deepseek/deepseek-v4-flash',
+        translatorOut: 'deepseek/deepseek-v4-flash',
+        embed: 'openai/text-embedding-3-small',
+        mcp: { simple: 'qwen/qwen3.5-9b', medium: 'google/gemma-4-26b-a4b-it', complex: 'mistralai/mistral-small-2603' },
+    },
 };
 
 // Heuristic complexity scoring for MCP prompts. Cheap, deterministic, no
@@ -48,10 +59,12 @@ export function pickMcpTier(prompt) {
 
 export async function ask({
     prompt,
+    provider = resolveProvider(),
+    apiKey,
     endpoint = process.env.BETTERPROPOSALS_LLAMA_URL || DEFAULT_ENDPOINT,
-    translatorInModel = process.env.BETTERPROPOSALS_TRANSLATOR_IN || DEFAULT_TRANSLATOR_IN,
-    translatorOutModel = process.env.BETTERPROPOSALS_TRANSLATOR_OUT || DEFAULT_TRANSLATOR_OUT,
-    embedModel = process.env.BETTERPROPOSALS_EMBED_MODEL || DEFAULT_EMBED_MODEL,
+    translatorInModel,  // resolved per-provider below if unset
+    translatorOutModel,
+    embedModel,
     mcpModel,           // explicit override; otherwise pickMcpTier picks
     mcpTier,            // 'simple' | 'medium' | 'complex' override
     mcpTimeoutMs,
@@ -68,6 +81,17 @@ export async function ask({
         throw new Error('ask: `prompt` is required.');
     }
 
+    // Resolve per-stage models: explicit arg → env override → provider
+    // default. Resolve the API key once (throws early if OpenRouter without
+    // a key). In OpenRouter mode every stage uses the cloud; in Ollama mode
+    // every stage uses the local server.
+    const defs = STAGE_DEFAULTS[provider] ?? STAGE_DEFAULTS.ollama;
+    const resolvedApiKey = apiKey ?? resolveApiKey(provider);
+    const inModel = translatorInModel || process.env.BETTERPROPOSALS_TRANSLATOR_IN || defs.translatorIn;
+    const outModel = translatorOutModel || process.env.BETTERPROPOSALS_TRANSLATOR_OUT || defs.translatorOut;
+    const resolvedEmbed = embedModel || process.env.BETTERPROPOSALS_EMBED_MODEL || defs.embed;
+    const mcpTiers = defs.mcp;
+
     // 1+2. Detect + translate to English (skip when already English).
     let languageCode = 'en';
     let languageName = 'English';
@@ -78,7 +102,7 @@ export async function ask({
         languageName = detected.name;
         if (languageCode !== 'en') {
             englishPrompt = await translateToEnglish(prompt, {
-                endpoint, model: translatorInModel, timeoutMs: translateTimeoutMs,
+                provider, endpoint, apiKey: resolvedApiKey, model: inModel, timeoutMs: translateTimeoutMs,
             });
         }
     }
@@ -86,7 +110,7 @@ export async function ask({
     // 3. Triage.
     const decision = force
         ? { path: force, generalScore: null, mcpScore: null, margin: null, generalBest: null, mcpBest: null }
-        : await triage(englishPrompt, { embedEndpoint: endpoint, embedModel });
+        : await triage(englishPrompt, { provider, embedEndpoint: endpoint, apiKey: resolvedApiKey, embedModel: resolvedEmbed });
 
     if (triageOnly) {
         return { language: languageCode, languageName, englishPrompt, decision, response: null };
@@ -101,9 +125,11 @@ export async function ask({
     let bestArticleScore = null;
     if (decision.path === 'mcp') {
         chosenMcpTier = mcpTier ?? pickMcpTier(englishPrompt);
-        chosenMcpModel = mcpModel ?? MCP_TIERS[chosenMcpTier] ?? MCP_TIERS.simple;
+        chosenMcpModel = mcpModel ?? mcpTiers[chosenMcpTier] ?? mcpTiers.simple;
         const result = await runAgent({
             prompt: englishPrompt,
+            provider,
+            apiKey: resolvedApiKey,
             endpoint,
             model: chosenMcpModel,
             timeoutMs: mcpTimeoutMs,
@@ -117,8 +143,10 @@ export async function ask({
     } else {
         const result = await runGeneralAgent({
             prompt: englishPrompt,
+            provider,
             embedEndpoint: endpoint,
-            embedModel,
+            apiKey: resolvedApiKey,
+            embedModel: resolvedEmbed,
         });
         englishResponse = result.response;
         bestArticle = result.article;
@@ -129,7 +157,7 @@ export async function ask({
     let response = englishResponse;
     if (translate && languageCode !== 'en') {
         response = await translateFromEnglish(englishResponse, languageCode, {
-            endpoint, model: translatorOutModel, timeoutMs: translateTimeoutMs,
+            provider, endpoint, apiKey: resolvedApiKey, model: outModel, timeoutMs: translateTimeoutMs,
         });
     }
 
@@ -138,6 +166,7 @@ export async function ask({
         languageName,
         englishPrompt,
         decision,
+        provider,
         mcpTier: chosenMcpTier,
         mcpModel: chosenMcpModel,
         article: bestArticle,
