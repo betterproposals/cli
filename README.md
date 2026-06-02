@@ -12,7 +12,7 @@ You need a GitHub Personal Access Token with `repo` scope. Generate one at `gith
 Since we don't have a "release" tag yet (just pre-release), you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```bash
-curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.3.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
+curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.4.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
 ```
 
 **Once the repo is public:** 
@@ -32,7 +32,7 @@ curl -fsSL https://betterproposals.io/cli-install | bash
 Same with `Windows/PowerShell`, you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```powershell
-$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.3.0"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
+$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.4.0"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
 ```
 
 **Once the repo is public:**
@@ -117,6 +117,34 @@ For programmatic use (e.g. the web-app shell), `--json` returns the response plu
 betterproposals ai "List the last 3 templates I created" --json
 ```
 
+### OpenRouter (cloud) mode
+
+Both `ai` and `ask` can run the agent LLM on [OpenRouter](https://openrouter.ai) instead of local Ollama — useful when you don't have a GPU box handy or want a stronger model. Add `--openrouter`:
+
+```bash
+cp .env.example .env          # then put your key in .env
+# OPENROUTER_API_KEY=sk-or-...
+
+betterproposals ai "How many documents have I sent today?" --openrouter
+```
+
+Bun auto-loads `.env`, so no extra tooling is needed. The key can also be supplied via the `OPENROUTER_API_KEY` environment variable directly.
+
+In OpenRouter mode **every stage** runs in the cloud — no local Ollama is required at all. Default models per stage:
+
+| Stage | Local Ollama | OpenRouter |
+|-------|--------------|------------|
+| `ai` agent | `llama3.2:1b` | `qwen/qwen3.5-9b` |
+| `ask` translation (both directions) | `hy-chat-translator-in/out` | `deepseek/deepseek-v4-flash` |
+| `ask` triage + article embeddings | `nomic-embed-text` | `openai/text-embedding-3-small` |
+| `ask` MCP agent — simple | `qwen3.5:2b` | `qwen/qwen3.5-9b` |
+| `ask` MCP agent — medium | `qwen3.5:4b` | `mistralai/mistral-small-2603` |
+| `ask` MCP agent — complex | `qwen3.5:9b` | `qwen/qwen3.6-plus` |
+
+Override any of these with `--model` (ai), `--mcp-model` / `--mcp-tier` (ask agent), `--translator-in` / `--translator-out` (ask translation), or `--embed-model` (ask triage/articles).
+
+The custom local translator models (`hy-chat-translator-*`, built from `ali6parmak/hy-mt1.5`) can't run on the cloud, so in OpenRouter mode their Modelfile system prompts are sent in-request to `deepseek/deepseek-v4-flash` instead. Embedding caches are keyed by model name, so the 768-dim local (`nomic`) and 1536-dim cloud (`text-embedding-3-small`) vectors never collide — switching providers back and forth doesn't force a recompute.
+
 ### Multi-turn conversations
 
 Each `betterproposals ai` invocation is its own process and would otherwise start fresh. Pass `--session <id>` to persist conversation history under that ID so follow-up turns retain context:
@@ -153,11 +181,7 @@ betterproposals ask "Quante proposte ho inviato oggi?"
 3. **Triage** — the English prompt is embedded with `nomic-embed-text` and compared against two anchor sets (general help vs MCP-actionable) via cosine similarity. Highest wins. Anchor embeddings cached at `~/.betterproposals/triage-anchors.json` (invalidates automatically when the anchor arrays change).
 4. **Route**:
    - **General path** — *no LLM at all*. The English prompt is embedded once more and matched against the ~150 help-center articles (`src/data/help-articles.json`) using cosine similarity. The best article's title + URL is returned, plus a "contact support for anything else" fallback line. Article embeddings cached at `~/.betterproposals/help-article-embeds.json`.
-   - **MCP path** — tiered escalation based on prompt complexity:
-     - `simple` (default) → `qwen3.5:2b`
-     - `medium` → `qwen3.5:4b`
-     - `complex` → `qwen3.5:9b`
-     Complexity is computed deterministically from prompt length, multi-step conjunctions ("and"/"then"), aggregation words ("total"/"sum"/"how many"), comparison words ("compare to"/"vs"/"top N"), and time ranges ("between"/"since"). No LLM call is needed to pick the tier. Override with `--mcp-tier` or pin a specific model with `--mcp-model`.
+   - **MCP path** — tiered escalation based on prompt complexity (`simple` / `medium` / `complex`). The model behind each tier depends on the provider — see the [OpenRouter table](#openrouter-cloud-mode) for the local-vs-cloud mapping. Complexity is computed deterministically from prompt length, multi-step conjunctions ("and"/"then"), aggregation words ("total"/"sum"/"how many"), comparison words ("compare to"/"vs"/"top N"), and time ranges ("between"/"since"). No LLM call is needed to pick the tier. Override with `--mcp-tier` or pin a specific model with `--mcp-model`.
 5. **Translate-out** — `hy-chat-translator-out` translates the English response back to the user's language. **URLs are masked as `[[URL0]]` placeholders before translation and spliced back afterwards** so help-article links never get mangled (without this, `/en/articles/4984101-using-pricing-tables` would have been "translated" to a non-existent `/it/articles/...` URL).
 
 ### Required setup
@@ -176,7 +200,8 @@ ollama pull qwen3.5:9b
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
+| `--endpoint <url>` | Ollama endpoint for translation + embeddings | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
+| `--openrouter` | Run the MCP-path agent on OpenRouter (translation + embeddings stay local) | off |
 | `--translator-in <name>` | IN translator model | `$BETTERPROPOSALS_TRANSLATOR_IN` or `hy-chat-translator-in` |
 | `--translator-out <name>` | OUT translator model | `$BETTERPROPOSALS_TRANSLATOR_OUT` or `hy-chat-translator-out` |
 | `--embed-model <name>` | Embedding model (triage + article matching) | `$BETTERPROPOSALS_EMBED_MODEL` or `nomic-embed-text` |
@@ -545,11 +570,12 @@ betterproposals ai "<prompt>" [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
-| `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` |
+| `--openrouter` | Run on OpenRouter instead of local Ollama (needs `OPENROUTER_API_KEY`) | off |
+| `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` (Ollama) / `qwen/qwen3.5-9b` (OpenRouter) |
 | `--system <text>` | Override the default system prompt | built-in (includes today's local date) |
 | `--max-iterations <n>` | Maximum tool-calling rounds before giving up | `8` |
 | `--timeout <seconds>` | Per-request timeout in seconds | `$BETTERPROPOSALS_LLAMA_TIMEOUT` or `300` |
-| `--num-ctx <n>` | Ollama context window in tokens | `$BETTERPROPOSALS_LLAMA_NUM_CTX` or `16384` |
+| `--num-ctx <n>` | Ollama context window in tokens (Ollama only) | `$BETTERPROPOSALS_LLAMA_NUM_CTX` or `16384` |
 | `--max-tool-items <n>` | Max items kept from a tool result `data` array | `$BETTERPROPOSALS_LLAMA_MAX_TOOL_ITEMS` or `25` |
 | `--session <id>` | Persist conversation history under this ID so multi-turn chat works across invocations | `$BETTERPROPOSALS_LLAMA_SESSION` (none) |
 | `--json` | Output a structured JSON object with the tool-call trace | off |
