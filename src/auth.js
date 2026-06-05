@@ -1,7 +1,37 @@
 import open from 'open';
+import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
+const CRED_FILE = join(homedir(), '.config', 'betterproposals', 'credentials.json');
+
+async function secretsSet(value) {
+    try {
+        await Bun.secrets.set({ service: SERVICE, name: NAME, value });
+    } catch {
+        await mkdir(join(homedir(), '.config', 'betterproposals'), { recursive: true });
+        await writeFile(CRED_FILE, value, { mode: 0o600 });
+    }
+}
+
+async function secretsGet() {
+    try {
+        return await Bun.secrets.get({ service: SERVICE, name: NAME }) ?? null;
+    } catch {
+        try {
+            return await readFile(CRED_FILE, 'utf8');
+        } catch {
+            return null;
+        }
+    }
+}
+
+async function secretsDelete() {
+    try { await Bun.secrets.delete({ service: SERVICE, name: NAME }); } catch { /* unavailable */ }
+    try { await unlink(CRED_FILE); } catch { /* doesn't exist */ }
+}
 
 const APP_BASE = 'https://cli.dev.betterproposals.io/2/cli/'; //TODO: Replace with production URL
 
@@ -205,15 +235,15 @@ export async function login() {
         throw new Error('Invalid token response from server');
     }
 
-    await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify({
+    await secretsSet(JSON.stringify({
         access_token:  data.access_token,
         refresh_token: data.refresh_token,
-    })});
+    }));
     console.log('Login successful!');
 }
 
 async function getCredentials() {
-    const raw = await Bun.secrets.get({service: SERVICE, name: NAME});
+    const raw = await secretsGet();
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
 }
@@ -234,7 +264,7 @@ async function refreshTokens(creds, retryOnce = true) {
             access_token: data.access_token,
             refresh_token: data.refresh_token,
         };
-        await Bun.secrets.set({service: SERVICE, name: NAME, value: JSON.stringify(newCreds)});
+        await secretsSet(JSON.stringify(newCreds));
         return newCreds.access_token;
     }
 
@@ -268,6 +298,6 @@ export async function refreshAccessToken() {
 }
 
 export async function logout() {
-    await Bun.secrets.delete({service: SERVICE, name: NAME});
+    await secretsDelete();
     console.log('Logged out.');
 }
