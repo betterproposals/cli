@@ -12,7 +12,7 @@ You need a GitHub Personal Access Token with `repo` scope. Generate one at `gith
 Since we don't have a "release" tag yet (just pre-release), you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```bash
-curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.4.0 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
+curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.4.3 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
 ```
 
 **Once the repo is public:** 
@@ -32,7 +32,7 @@ curl -fsSL https://betterproposals.io/cli-install | bash
 Same with `Windows/PowerShell`, you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
 
 ```powershell
-$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.4.0"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
+$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.4.3"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
 ```
 
 **Once the repo is public:**
@@ -96,13 +96,13 @@ betterproposals mcp uninstall <target>
 
 ## Llama (self-hosted models)
 
-For Llama models (e.g. a `llama3.2:1b` small model) the CLI ships its own agent loop instead of relying on a host app. It speaks to any Ollama-compatible `/api/chat` endpoint, advertises all Better Proposals tools via the `tools` field, and dispatches the model's `tool_calls` against the same handlers the MCP server uses.
+For Llama models (e.g. a `qwen3.5:2b` small model) the CLI ships its own agent loop instead of relying on a host app. It speaks to any Ollama-compatible `/api/chat` endpoint, advertises all Better Proposals tools via the `tools` field, and dispatches the model's `tool_calls` against the same handlers the MCP server uses.
 
 Configure the endpoint with env vars (override per-invocation with `--endpoint` / `--model`):
 
 ```bash
 export BETTERPROPOSALS_LLAMA_URL="http://llama-host:11434/api/chat"
-export BETTERPROPOSALS_LLAMA_MODEL="llama3.2:1b"
+export BETTERPROPOSALS_LLAMA_MODEL="qwen3.5:2b"
 ```
 
 Then send a natural-language prompt:
@@ -134,12 +134,14 @@ In OpenRouter mode **every stage** runs in the cloud — no local Ollama is requ
 
 | Stage | Local Ollama | OpenRouter |
 |-------|--------------|------------|
-| `ai` agent | `llama3.2:1b` | `qwen/qwen3.5-9b` |
+| `ai` agent | `qwen3.5:2b` | `qwen/qwen3.5-9b` |
 | `ask` translation (both directions) | `hy-chat-translator-in/out` | `deepseek/deepseek-v4-flash` |
 | `ask` triage + article embeddings | `nomic-embed-text` | `openai/text-embedding-3-small` |
-| `ask` MCP agent — simple | `qwen3.5:2b` | `qwen/qwen3.5-9b` |
-| `ask` MCP agent — medium | `qwen3.5:4b` | `mistralai/mistral-small-2603` |
-| `ask` MCP agent — complex | `qwen3.5:9b` | `qwen/qwen3.6-plus` |
+| `ask` article reranker (general path, top-K) | off | `deepseek/deepseek-v4-flash` |
+| `ask` intent gate (MCP-vs-general) | `qwen3.5:2b` | `deepseek/deepseek-v4-flash` |
+| `ask` MCP agent — simple | `qwen3.5:2b` | `deepseek/deepseek-v4-flash` |
+| `ask` MCP agent — medium | `qwen3.5:4b` | `deepseek/deepseek-v4-pro` |
+| `ask` MCP agent — complex | `qwen3.5:9b` | `qwen/qwen3.7-plus` |
 
 Override any of these with `--model` (ai), `--mcp-model` / `--mcp-tier` (ask agent), `--translator-in` / `--translator-out` (ask translation), or `--embed-model` (ask triage/articles).
 
@@ -176,13 +178,32 @@ betterproposals ask "Quante proposte ho inviato oggi?"
 
 ### Pipeline
 
-1. **Language detection** — `franc-min` (pure JS, no model, ~ms) returns the source language code. English skips the rest of the translation stages.
-2. **Translate-in** — `hy-chat-translator-in` (a fine-tuned `ali6parmak/hy-mt1.5` translator, system prompt baked into the Modelfile) takes the prompt to English. Used only when the input isn't already English.
-3. **Triage** — the English prompt is embedded with `nomic-embed-text` and compared against two anchor sets (general help vs MCP-actionable) via cosine similarity. Highest wins. Anchor embeddings cached at `~/.betterproposals/triage-anchors.json` (invalidates automatically when the anchor arrays change).
+1. **Language detection + translate-in** — converts the prompt to English (and remembers the source language for the response).
+   - *Ollama:* `franc-min` (pure JS, no model) detects the language, then `hy-chat-translator-in` (fine-tuned `ali6parmak/hy-mt1.5`) translates if it isn't English.
+   - *OpenRouter:* a single `deepseek/deepseek-v4-flash` call returns `{lang, english}` together. This is far more robust than franc on short text — franc mislabels e.g. "create a proposal about a coffee shop" as Romanian, which previously caused the whole answer to come back in the wrong language.
+2. **Triage (cosine first pass)** — the English prompt is embedded (`nomic-embed-text` local / `openai/text-embedding-3-small` cloud) and compared against two anchor sets (general help vs MCP-actionable) via cosine similarity. Anchor embeddings are cached per model under `~/.betterproposals/`.
+3. **Intent gate (complementary step)** — cosine can't separate *"how do I create a proposal"* (how-to → general) from *"create a proposal"* (action → MCP); the anchors are lexically near and scores land within a few hundredths. So whenever cosine picks **general**, a fast LLM (`qwen3.5:2b` local / `deepseek/deepseek-v4-flash` cloud) re-checks intent with an **MCP-priority bias** and flips to MCP if the message is really a command or data query. Instructional phrasing ("how do I…", "where do I…") stays general. Recent `--session` turns are fed in so follow-ups like *"yes, set the tax to 21%"* are understood in context and stay on the data path.
 4. **Route**:
-   - **General path** — *no LLM at all*. The English prompt is embedded once more and matched against the ~150 help-center articles (`src/data/help-articles.json`) using cosine similarity. The best article's title + URL is returned, plus a "contact support for anything else" fallback line. Article embeddings cached at `~/.betterproposals/help-article-embeds.json`.
-   - **MCP path** — tiered escalation based on prompt complexity (`simple` / `medium` / `complex`). The model behind each tier depends on the provider — see the [OpenRouter table](#openrouter-cloud-mode) for the local-vs-cloud mapping. Complexity is computed deterministically from prompt length, multi-step conjunctions ("and"/"then"), aggregation words ("total"/"sum"/"how many"), comparison words ("compare to"/"vs"/"top N"), and time ranges ("between"/"since"). No LLM call is needed to pick the tier. Override with `--mcp-tier` or pin a specific model with `--mcp-model`.
-5. **Translate-out** — `hy-chat-translator-out` translates the English response back to the user's language. **URLs are masked as `[[URL0]]` placeholders before translation and spliced back afterwards** so help-article links never get mangled (without this, `/en/articles/4984101-using-pricing-tables` would have been "translated" to a non-existent `/it/articles/...` URL).
+   - **General path** — *no agent LLM*. The English prompt is embedded once more and compared against the ~150 help-center articles (`src/data/help-articles.json`) by cosine similarity; the top-5 candidates are then reranked by a small LLM on OpenRouter (`deepseek/deepseek-v4-flash`, off locally) so questions whose lexical top-1 is wrong still get the best article (e.g. "Indian rupees — how do I set them?" picks "Finance settings" over the cosine winner "Using quantities"). Disable with `--no-reranker`.
+   - **MCP path** — tiered escalation based on prompt complexity (`simple` / `medium` / `complex`). The model behind each tier depends on the provider — see the [OpenRouter table](#openrouter-cloud-mode). Complexity is computed deterministically from prompt length, multi-step conjunctions, aggregation words, comparison words, and time ranges — no LLM call needed to pick the tier. Override with `--mcp-tier` or `--mcp-model`.
+5. **Translate-out** — translates the English response back to the user's language (`hy-chat-translator-out` local / `deepseek/deepseek-v4-flash` cloud). **URLs are masked as `[[URL0]]` placeholders before translation and spliced back afterwards** so help-article links never get mangled (without this, `/en/articles/4984101-using-pricing-tables` would be "translated" into a non-existent `/it/articles/...` URL).
+
+### Required setup
+
+### Session pinning (`--session`)
+
+When a `--session <id>` is passed:
+
+- **Detected language is pinned** — the language from the first turn is reused for every subsequent turn in the session, so the language can't drift between short prompts and the outbound translator can't prepend language labels ("Italiano:") to the final response.
+- **MCP path is pinned** — as soon as a turn has been routed MCP, every later turn in the same session stays on MCP. The general path has no session memory (it returns a static article link), so dropping back to general mid-conversation would silently lose the prior messages. The pinning signal is the session messages file (`~/.betterproposals/sessions/<id>.json`) which only the MCP agent ever writes.
+
+Metadata (pinned language, last path) is stored separately in `~/.betterproposals/sessions/<id>.meta.json`.
+
+```bash
+betterproposals ask "quali sono le mie impostazioni?" --session conv-7 --openrouter
+betterproposals ask "sì, vorrei mettere le tasse al 21%" --session conv-7 --openrouter
+# second turn stays in MCP with the conversation visible, language stays Italian
+```
 
 ### Required setup
 
@@ -201,10 +222,12 @@ ollama pull qwen3.5:9b
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--endpoint <url>` | Ollama endpoint for translation + embeddings | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
-| `--openrouter` | Run the MCP-path agent on OpenRouter (translation + embeddings stay local) | off |
+| `--openrouter` | Run the whole pipeline on OpenRouter — translation, embeddings, intent gate, reranker, agent | off |
 | `--translator-in <name>` | IN translator model | `$BETTERPROPOSALS_TRANSLATOR_IN` or `hy-chat-translator-in` |
 | `--translator-out <name>` | OUT translator model | `$BETTERPROPOSALS_TRANSLATOR_OUT` or `hy-chat-translator-out` |
 | `--embed-model <name>` | Embedding model (triage + article matching) | `$BETTERPROPOSALS_EMBED_MODEL` or `nomic-embed-text` |
+| `--reranker-model <name>` | Model for the top-K article reranker (OpenRouter only) | `$BETTERPROPOSALS_RERANKER_MODEL` or `deepseek/deepseek-v4-flash` on OpenRouter |
+| `--no-reranker` | Disable the LLM reranker; fall back to top-1 cosine on the general path | off |
 | `--mcp-tier <tier>` | Force `simple` / `medium` / `complex` | auto-detected |
 | `--mcp-model <name>` | Pin a specific MCP model, overrides the tier mapping | — |
 | `--mcp-timeout <seconds>` | Per-request timeout on the MCP path | inherits `ai` defaults |
@@ -571,7 +594,7 @@ betterproposals ai "<prompt>" [options]
 |--------|-------------|---------|
 | `--endpoint <url>` | Ollama-compatible chat endpoint | `$BETTERPROPOSALS_LLAMA_URL` or `http://localhost:11434/api/chat` |
 | `--openrouter` | Run on OpenRouter instead of local Ollama (needs `OPENROUTER_API_KEY`) | off |
-| `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `llama3.2:1b` (Ollama) / `qwen/qwen3.5-9b` (OpenRouter) |
+| `--model <name>` | Model name | `$BETTERPROPOSALS_LLAMA_MODEL` or `qwen3.5:2b` (Ollama) / `qwen/qwen3.5-9b` (OpenRouter) |
 | `--system <text>` | Override the default system prompt | built-in (includes today's local date) |
 | `--max-iterations <n>` | Maximum tool-calling rounds before giving up | `8` |
 | `--timeout <seconds>` | Per-request timeout in seconds | `$BETTERPROPOSALS_LLAMA_TIMEOUT` or `300` |

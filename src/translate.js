@@ -29,7 +29,9 @@ const OUT_SYSTEM = `You are a machine translation engine.
 The user will provide a target language and an English phrase.
 Your ONLY job is to translate that English phrase into the requested target language.
 - Output ONLY the final translated text.
-- Do not include any greeting, intro, or explanations.`;
+- Do not include any greeting, intro, or explanations.
+- Do NOT prepend the language name or any label (no "Italiano:", no "Italian:", no "Francese:", nothing).
+- Do NOT add "Here is the translation:" or similar commentary.`;
 
 // franc-min returns ISO 639-3 codes. Map the common ones to ISO 639-1
 // + the English name we pass to the OUT translator.
@@ -233,6 +235,15 @@ export async function translateToEnglish(text, { provider = 'ollama', endpoint, 
 // → /it/articles/123-modificare-il-design...) which silently produces
 // broken links. Replace URLs with opaque placeholder tokens before
 // translation and splice them back afterwards.
+// Also: small models occasionally prepend the language name ("Italiano:",
+// "Italian:") as a label despite the system prompt forbidding it. Strip it.
+function stripLeadingLabel(text, langName) {
+    if (!langName || !text) return text;
+    const rx = new RegExp(`^\\s*\\**${langName}(?:o|e|a|ese)?\\*?\\s*:?\\s*`, 'i');
+    const cleaned = text.replace(rx, '');
+    return cleaned || text;
+}
+
 const URL_REGEX = /https?:\/\/\S+/g;
 function protectUrls(text) {
     const urls = [];
@@ -258,15 +269,66 @@ export async function translateFromEnglish(text, targetLang, { provider = 'ollam
         ? [{ role: 'system', content: OUT_SYSTEM }, userMsg]
         : [userMsg];
     const raw = await chatText({ provider, endpoint, apiKey, model, messages, timeoutMs });
-    return restoreUrls(raw.trim(), urls);
+    const cleaned = stripLeadingLabel(raw.trim(), lang.name);
+    return restoreUrls(cleaned, urls);
+}
+
+function parseJsonLoose(text) {
+    const cleaned = (text ?? '').replace(/```json|```/gi, '');
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) return null;
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
+}
+
+const DETECT_TRANSLATE_SYSTEM = `You are a language detection and translation engine for a SaaS assistant.
+The user sends one message in any language. Respond with ONLY a JSON object — no markdown, no code fences, no commentary:
+{"lang":"<ISO 639-1 code, e.g. en, it, es, fr, de, pt>","en":"<the message translated to natural English>"}
+If the message is already in English, set "lang" to "en" and "en" to the original message verbatim.
+Output ONLY the JSON object.`;
+
+// Detect the source language and produce the English version of the prompt
+// in one shot. On OpenRouter this is a single strong-model call (robust on
+// short text where franc-min misfires — e.g. it labels "create a proposal
+// about a coffee shop" as Romanian). On Ollama it falls back to local
+// franc detection + the hy translator.
+export async function prepareInput(prompt, { provider = 'ollama', endpoint, apiKey, model, timeoutMs }) {
+    if (provider === 'openrouter') {
+        try {
+            const raw = await chatText({
+                provider, endpoint, apiKey, model,
+                messages: [
+                    { role: 'system', content: DETECT_TRANSLATE_SYSTEM },
+                    { role: 'user', content: prompt },
+                ],
+                timeoutMs,
+            });
+            const parsed = parseJsonLoose(raw);
+            const lang = parsed && resolveLanguage(parsed.lang);
+            if (lang && typeof parsed.en === 'string' && parsed.en.trim()) {
+                return {
+                    languageCode: lang.iso639_1,
+                    languageName: lang.name,
+                    englishPrompt: lang.iso639_1 === 'en' ? prompt : parsed.en.trim(),
+                };
+            }
+        } catch {
+            // fall through to franc-based fallback below
+        }
+    }
+
+    // Local / fallback path: detect with franc, translate only if needed.
+    const lang = detectLanguage(prompt);
+    if (lang.iso639_1 === 'en') {
+        return { languageCode: 'en', languageName: 'English', englishPrompt: prompt };
+    }
+    const englishPrompt = await translateToEnglish(prompt, { provider, endpoint, apiKey, model, timeoutMs });
+    return { languageCode: lang.iso639_1, languageName: lang.name, englishPrompt };
 }
 
 // Compatibility shim for older callers that expect a single function
-// returning {language, english}. Detection is local now; translation is
-// only invoked when the language isn't English.
-export async function detectAndTranslate(text, { provider = 'ollama', endpoint, apiKey, model = DEFAULT_TRANSLATOR_IN, timeoutMs }) {
-    const lang = detectLanguage(text);
-    if (lang.iso639_1 === 'en') return { language: 'en', english: text };
-    const english = await translateToEnglish(text, { provider, endpoint, apiKey, model, timeoutMs });
-    return { language: lang.iso639_1, english };
+// returning {language, english}.
+export async function detectAndTranslate(text, opts) {
+    const { languageCode, englishPrompt } = await prepareInput(text, opts ?? {});
+    return { language: languageCode, english: englishPrompt };
 }
