@@ -536,6 +536,8 @@ program
     .option('--translator-in <name>', 'Model used to translate user input → English (env: BETTERPROPOSALS_TRANSLATOR_IN)')
     .option('--translator-out <name>', 'Model used to translate response → user language (env: BETTERPROPOSALS_TRANSLATOR_OUT)')
     .option('--embed-model <name>', 'Model used for triage + article embeddings (env: BETTERPROPOSALS_EMBED_MODEL)')
+    .option('--reranker-model <name>', 'Model used to rerank the top-K article candidates on the general path (OpenRouter default: deepseek/deepseek-v4-flash; env: BETTERPROPOSALS_RERANKER_MODEL)')
+    .option('--no-reranker', 'Disable the LLM reranker on the general path (falls back to top-1 cosine)')
     .option('--mcp-model <name>', 'Explicit MCP model — overrides the tier-based auto-selection')
     .option('--mcp-tier <tier>', 'Force MCP tier: simple / medium / complex (model per tier depends on provider)')
     .option('--mcp-timeout <seconds>', 'Per-request timeout for the MCP model in seconds')
@@ -557,6 +559,8 @@ program
                 translatorInModel: opts.translatorIn,
                 translatorOutModel: opts.translatorOut,
                 embedModel: opts.embedModel,
+                rerankerModel: opts.rerankerModel,
+                noReranker: opts.reranker === false,
                 mcpModel: opts.mcpModel,
                 mcpTier: opts.mcpTier,
                 mcpTimeoutMs: opts.mcpTimeout ? Number(opts.mcpTimeout) * 1000 : undefined,

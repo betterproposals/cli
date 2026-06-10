@@ -1,7 +1,7 @@
-import { detectLanguage, translateToEnglish, translateFromEnglish } from './translate.js';
-import { triage } from './triage.js';
+import { prepareInput, translateToEnglish, translateFromEnglish } from './translate.js';
+import { triage, classifyMcpIntent } from './triage.js';
 import { runGeneralAgent } from './general.js';
-import { runAgent } from './ai.js';
+import { runAgent, loadSessionContext, sessionHasBeenMcp, loadSessionMeta, saveSessionMeta } from './ai.js';
 import { resolveProvider, resolveApiKey } from './provider.js';
 
 // Orchestrator for `betterproposals ask`. Flow:
@@ -28,13 +28,17 @@ const STAGE_DEFAULTS = {
         translatorIn: 'hy-chat-translator-in',
         translatorOut: 'hy-chat-translator-out',
         embed: 'nomic-embed-text',
+        intent: 'qwen3.5:2b',
+        reranker: null,   // off unless explicitly overridden on the local path
         mcp: { simple: 'qwen3.5:2b', medium: 'qwen3.5:4b', complex: 'qwen3.5:9b' },
     },
     openrouter: {
         translatorIn: 'deepseek/deepseek-v4-flash',
         translatorOut: 'deepseek/deepseek-v4-flash',
         embed: 'openai/text-embedding-3-small',
-        mcp: { simple: 'qwen/qwen3.5-9b', medium: 'mistralai/mistral-small-2603', complex: 'qwen/qwen3.6-plus' },
+        intent: 'deepseek/deepseek-v4-flash',
+        reranker: 'deepseek/deepseek-v4-flash',
+        mcp: { simple: 'deepseek/deepseek-v4-flash', medium: 'deepseek/deepseek-v4-pro', complex: 'qwen/qwen3.7-plus' },
     },
 };
 
@@ -65,6 +69,9 @@ export async function ask({
     translatorInModel,  // resolved per-provider below if unset
     translatorOutModel,
     embedModel,
+    intentModel,
+    rerankerModel,
+    noReranker,         // explicitly disable the LLM reranker on the general path
     mcpModel,           // explicit override; otherwise pickMcpTier picks
     mcpTier,            // 'simple' | 'medium' | 'complex' override
     mcpTimeoutMs,
@@ -90,30 +97,96 @@ export async function ask({
     const inModel = translatorInModel || process.env.BETTERPROPOSALS_TRANSLATOR_IN || defs.translatorIn;
     const outModel = translatorOutModel || process.env.BETTERPROPOSALS_TRANSLATOR_OUT || defs.translatorOut;
     const resolvedEmbed = embedModel || process.env.BETTERPROPOSALS_EMBED_MODEL || defs.embed;
+    const resolvedIntent = intentModel || process.env.BETTERPROPOSALS_INTENT_MODEL || defs.intent;
+    const resolvedRerankerModel = rerankerModel || process.env.BETTERPROPOSALS_RERANKER_MODEL || defs.reranker;
+    // Reranker is on whenever we have a model for it AND the caller didn't
+    // explicitly disable it. The local path ships null by default (off);
+    // OpenRouter ships deepseek-v4-flash (on).
+    const reranker = noReranker || !resolvedRerankerModel
+        ? null
+        : { model: resolvedRerankerModel };
     const mcpTiers = defs.mcp;
 
-    // 1+2. Detect + translate to English (skip when already English).
+    // 1+2. Detect + translate to English (skips translation when already
+    // English; on OpenRouter detection + translation are one strong-model
+    // call, robust on short text where franc misfires).
+    //
+    // Session pinning: if this session already has a recorded language
+    // from a previous turn, reuse it without re-detecting. Language
+    // drifts across short prompts and the back-translator sometimes
+    // prepends the language name ("Italiano:"); pinning prevents both.
     let languageCode = 'en';
     let languageName = 'English';
     let englishPrompt = prompt;
-    if (translate) {
-        const detected = detectLanguage(prompt);
-        languageCode = detected.iso639_1;
-        languageName = detected.name;
-        if (languageCode !== 'en') {
+    let languageSource = 'detected';
+    const meta = sessionId ? loadSessionMeta(sessionId) : null;
+    const languagePinned = translate && meta?.languageCode;
+    if (languagePinned) {
+        languageCode = meta.languageCode;
+        languageName = meta.languageName;
+        languageSource = 'pinned';
+        if (languageCode === 'en') {
+            englishPrompt = prompt;
+        } else {
             englishPrompt = await translateToEnglish(prompt, {
                 provider, endpoint, apiKey: resolvedApiKey, model: inModel, timeoutMs: translateTimeoutMs,
             });
         }
+    } else if (translate) {
+        const prepared = await prepareInput(prompt, {
+            provider, endpoint, apiKey: resolvedApiKey, model: inModel, timeoutMs: translateTimeoutMs,
+        });
+        languageCode = prepared.languageCode;
+        languageName = prepared.languageName;
+        englishPrompt = prepared.englishPrompt;
     }
 
-    // 3. Triage.
+    // 3. Triage (cosine first pass).
     const decision = force
         ? { path: force, generalScore: null, mcpScore: null, margin: null, generalBest: null, mcpBest: null }
         : await triage(englishPrompt, { provider, embedEndpoint: endpoint, apiKey: resolvedApiKey, embedModel: resolvedEmbed });
 
+    // 3b. Complementary intent gate. Cosine can't separate "how do I create
+    // a proposal" (general) from "create a proposal" (mcp). When cosine
+    // landed on general, re-check with an LLM that has MCP-priority bias;
+    // feed recent session turns so follow-ups ("yes, set tax to 21%") stay
+    // on the data path.
+    if (!force && decision.path === 'general') {
+        const context = sessionId ? loadSessionContext(sessionId) : '';
+        const intent = await classifyMcpIntent(englishPrompt, {
+            provider, endpoint, apiKey: resolvedApiKey, model: resolvedIntent,
+            timeoutMs: translateTimeoutMs, context,
+        });
+        if (intent === 'mcp') {
+            decision.path = 'mcp';
+            decision.overriddenByIntentGate = true;
+        }
+    }
+
+    // 3c. Session pinning: once a session has been routed MCP at least
+    // once, every subsequent turn stays on MCP. The general path has no
+    // session memory, so dropping back to general mid-conversation loses
+    // all prior messages. (We check presence of the messages file which
+    // only runAgent ever writes.)
+    if (!force && sessionId && sessionHasBeenMcp(sessionId)) {
+        decision.path = 'mcp';
+        decision.sessionPinnedToMcp = true;
+    }
+
+    // 4. Meta housekeeping for the session. Pin language on first turn,
+    // update on each turn so it's available for future rehydrations even
+    // if --no-translate is passed next time. Also record the path choice.
+    if (sessionId) {
+        saveSessionMeta(sessionId, {
+            languageCode,
+            languageName,
+            languageSource,
+            lastPath: decision.path,
+        });
+    }
+
     if (triageOnly) {
-        return { language: languageCode, languageName, englishPrompt, decision, response: null };
+        return { language: languageCode, languageName, languageSource, englishPrompt, decision, response: null };
     }
 
     // 4. Route.
@@ -123,6 +196,7 @@ export async function ask({
     let chosenMcpTier = null;
     let bestArticle = null;
     let bestArticleScore = null;
+    let rerankedFlag = false;
     if (decision.path === 'mcp') {
         chosenMcpTier = mcpTier ?? pickMcpTier(englishPrompt);
         chosenMcpModel = mcpModel ?? mcpTiers[chosenMcpTier] ?? mcpTiers.simple;
@@ -147,10 +221,12 @@ export async function ask({
             embedEndpoint: endpoint,
             apiKey: resolvedApiKey,
             embedModel: resolvedEmbed,
+            reranker,
         });
         englishResponse = result.response;
         bestArticle = result.article;
         bestArticleScore = result.score;
+        rerankedFlag = result.reranked;
     }
 
     // 5. Translate response back.
@@ -164,6 +240,7 @@ export async function ask({
     return {
         language: languageCode,
         languageName,
+        languageSource,
         englishPrompt,
         decision,
         provider,
@@ -171,6 +248,7 @@ export async function ask({
         mcpModel: chosenMcpModel,
         article: bestArticle,
         articleScore: bestArticleScore,
+        reranked: rerankedFlag,
         response,
         englishResponse,
         trace,

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
-import { embedText } from './provider.js';
+import { embedText, chatText } from './provider.js';
 
 // Vector-cosine-similarity triage. The user prompt (translated to English
 // first) is embedded once, then compared against two pre-embedded anchor
@@ -172,4 +172,33 @@ export async function triage(prompt, { provider = 'ollama', embedEndpoint, apiKe
         generalBest,
         mcpBest,
     };
+}
+
+const INTENT_SYSTEM = `You route the latest user message for the "Better Proposals" assistant, which has tools to read and modify the user's own account data (proposals, documents, quotes, contracts, companies, templates, covers, document types, currencies, merge tags, and account/brand/tax settings).
+
+Reply "MCP" if the message is a COMMAND or a DATA QUESTION about the user's own account, for example:
+- imperative actions: "create a proposal about X", "make a draft for Y", "send it", "delete that", "add a company"
+- data lookups: "how many proposals did I send today", "what are my settings", "list my templates", "show my companies"
+- a short follow-up that continues such a task: "yes, do it", "set the tax to 21%", "the second one"
+
+Reply "GENERAL" if the message is an INSTRUCTIONAL / how-to / informational question about how to use the product — typically phrased "how do I…", "how can I…", "how to…", "where do I…", "what is…", "can I…". These want an explanation, not an action on the user's data, EVEN IF they mention verbs like add, create, or send.
+
+When genuinely ambiguous, prefer MCP.
+Reply with exactly one word: MCP or GENERAL.`;
+
+// Complementary intent gate. Cosine similarity confuses "how do I create a
+// proposal" (how-to → general) with "create a proposal" (action → mcp)
+// because the anchors are lexically near. This LLM step re-checks a
+// general verdict and flips it to mcp when the message is really an
+// action/query on the user's data — enforcing "MCP has priority". Given an
+// optional `context` (recent conversation), follow-ups stay on track.
+export async function classifyMcpIntent(englishPrompt, { provider = 'ollama', endpoint, apiKey, model, timeoutMs, context } = {}) {
+    const messages = [{ role: 'system', content: INTENT_SYSTEM }];
+    if (context) {
+        messages.push({ role: 'user', content: `Recent conversation (for context only):\n${context}` });
+    }
+    messages.push({ role: 'user', content: `Latest message: ${englishPrompt}` });
+    const raw = await chatText({ provider, endpoint, apiKey, model, messages, timeoutMs });
+    // Bias to MCP: only an explicit, sole GENERAL keeps the general path.
+    return /\bGENERAL\b/i.test(raw) && !/\bMCP\b/i.test(raw) ? 'general' : 'mcp';
 }

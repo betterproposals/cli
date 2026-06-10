@@ -11,7 +11,7 @@ import { resolveProvider, resolveApiKey, chatWithTools, formatToolResultMessage 
 // and reads the structured JSON response when --json is set.
 
 const DEFAULT_ENDPOINT = 'http://localhost:11434/api/chat';
-const DEFAULT_MODEL = 'llama3.2:1b';
+const DEFAULT_MODEL = 'qwen3.5:2b';
 // Default model when running against OpenRouter instead of local Ollama.
 const DEFAULT_OPENROUTER_MODEL = 'qwen/qwen3.5-9b';
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -164,11 +164,47 @@ const TOOL_PROJECTIONS = {
 // process and would otherwise start fresh).
 const SESSIONS_DIR = join(homedir(), '.betterproposals', 'sessions');
 
-function sessionPath(id) {
+export function sessionPath(id) {
     // Sanitize: only allow word chars, dashes, dots — sessions IDs come from
     // callers, so don't let them path-traverse.
     const safe = String(id).replace(/[^A-Za-z0-9._-]/g, '_');
     return join(SESSIONS_DIR, `${safe}.json`);
+}
+
+// Side-channel metadata (language, pinned path) lives alongside the
+// messages file as `<id>.meta.json`. Keeping them separate avoids mutating
+// the messages structure and keeps the message file backward-compatible.
+export function sessionMetaPath(id) {
+    const safe = String(id).replace(/[^A-Za-z0-9._-]/g, '_');
+    return join(SESSIONS_DIR, `${safe}.meta.json`);
+}
+
+// Has this session previously routed through the MCP path? The messages
+// file is only ever written by runAgent (MCP path), so its existence is
+// the signal. The general path never writes it.
+export function sessionHasBeenMcp(id) {
+    if (!id) return false;
+    return existsSync(sessionPath(id));
+}
+
+export function loadSessionMeta(id) {
+    if (!id) return null;
+    const path = sessionMetaPath(id);
+    if (!existsSync(path)) return null;
+    try {
+        const parsed = JSON.parse(readFileSync(path, 'utf8'));
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+export function saveSessionMeta(id, patch) {
+    if (!id || !patch) return;
+    const existing = loadSessionMeta(id) ?? {};
+    const merged = { ...existing, ...patch };
+    mkdirSync(dirname(sessionMetaPath(id)), { recursive: true });
+    writeFileSync(sessionMetaPath(id), JSON.stringify(merged), 'utf8');
 }
 
 function loadSession(id) {
@@ -181,6 +217,23 @@ function loadSession(id) {
     } catch {
         return [];
     }
+}
+
+// Build a short plain-text digest of the most recent turns in a session,
+// for feeding conversation context to the routing intent gate. Tool
+// messages are summarized (not dumped) to keep it compact. Returns '' when
+// there's no session or no history.
+export function loadSessionContext(id, { maxTurns = 4, maxChars = 1200 } = {}) {
+    const msgs = loadSession(id).filter((m) => m.role === 'user' || m.role === 'assistant');
+    const recent = msgs.slice(-maxTurns);
+    const lines = recent.map((m) => {
+        const who = m.role === 'user' ? 'User' : 'Assistant';
+        const text = (typeof m.content === 'string' ? m.content : '').replace(/\s+/g, ' ').trim();
+        return text ? `${who}: ${text}` : null;
+    }).filter(Boolean);
+    let out = lines.join('\n');
+    if (out.length > maxChars) out = out.slice(out.length - maxChars);
+    return out;
 }
 
 function saveSession(id, messages, maxMessages) {

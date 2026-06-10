@@ -2,8 +2,20 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { embedText } from './provider.js';
+import { embedText, chatText } from './provider.js';
 import { cosineSimilarity } from './triage.js';
+
+// Two-stage article selector: cosine gives us a top-K from 150+ articles
+// (cheap, always right for lexical matches), then an optional LLM rerank
+// fixes the cases cosine gets wrong — e.g. "le rupie indiane. come le
+// imposto?" (how to set Indian rupees) would get "using quantities" from
+// pure cosine but "finance settings" from an LLM that understands intent.
+// The reranker is optional: callers pass a `reranker` object only when
+// they want the extra LLM cost (OpenRouter, not the local path).
+const TOP_K = 5;
+
+const RERANK_SYSTEM = `You pick the most relevant Better Proposals help-center article for a user's English question.
+Reply with ONLY the number of the best article (1-based). If none are relevant, reply "none". Do not explain.`;
 
 // "General" path: no LLM. The user's English question is embedded and
 // matched against pre-embedded help-center article titles (with their
@@ -85,28 +97,90 @@ async function ensureArticleEmbeddings({ provider, embedEndpoint, apiKey, embedM
     return embeddings;
 }
 
-export async function findBestArticle(query, { provider = 'ollama', embedEndpoint, apiKey, embedModel }) {
+function topK(queryEmbed, articles, embeddings, k) {
+    const scored = articles.map((article, i) => ({
+        article,
+        score: cosineSimilarity(queryEmbed, embeddings[i]),
+        index: i,
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, k);
+}
+
+function parseRerankerChoice(raw, n) {
+    const s = (raw ?? '').toLowerCase().trim();
+    if (s === 'none') return null;
+    const m = s.match(/\d+/);
+    if (!m) return null;
+    const picked = Number(m[0]);
+    return Number.isFinite(picked) && picked >= 1 && picked <= n ? picked - 1 : null;
+}
+
+async function rerankWithLLM({
+    query, candidates, provider, endpoint, apiKey, rerankerModel, timeoutMs,
+}) {
+    const list = candidates
+        .map((c, i) => `${i + 1}. ${c.article.title} — ${c.article.category} — ${c.article.url}`)
+        .join('\n');
+    const messages = [
+        { role: 'system', content: RERANK_SYSTEM },
+        { role: 'user', content: `User question: ${query}\n\nCandidate articles:\n${list}` },
+    ];
+    const raw = await chatText({ provider, endpoint, apiKey, model: rerankerModel, messages, timeoutMs });
+    return parseRerankerChoice(raw, candidates.length);
+}
+
+export async function findBestArticle(query, { provider = 'ollama', embedEndpoint, apiKey, embedModel, reranker, rerankTimeoutMs }) {
     const articles = loadArticles();
     const embeddings = await ensureArticleEmbeddings({ provider, embedEndpoint, apiKey, embedModel });
     const queryEmbed = await embedText({ provider, endpoint: embedEndpoint, apiKey, model: embedModel, input: query });
 
-    let bestIdx = -1;
-    let bestScore = -Infinity;
-    for (let i = 0; i < embeddings.length; i++) {
-        const score = cosineSimilarity(queryEmbed, embeddings[i]);
-        if (score > bestScore) {
-            bestScore = score;
-            bestIdx = i;
-        }
+    const candidates = topK(queryEmbed, articles, embeddings, TOP_K);
+
+    // Reranker off (Ollama) or unavailable: top-1 cosine wins.
+    if (!reranker || provider !== 'openrouter') {
+        return {
+            article: candidates[0].article,
+            score: candidates[0].score,
+            reranked: false,
+            candidates,
+        };
     }
-    return { article: articles[bestIdx], score: bestScore };
+
+    // Reranker on (OpenRouter): LLM picks from the top-K.
+    try {
+        const picked = await rerankWithLLM({
+            query, candidates, provider, endpoint: embedEndpoint, apiKey,
+            rerankerModel: reranker.model,
+            timeoutMs: rerankTimeoutMs ?? 60_000,
+        });
+        const chosen = picked !== null ? candidates[picked] : candidates[0];
+        return {
+            article: chosen.article,
+            score: chosen.score,
+            reranked: true,
+            rerankerPickedIndex: picked,
+            candidates,
+        };
+    } catch {
+        // Reranker failure is not fatal — fall back to top-1 cosine.
+        return {
+            article: candidates[0].article,
+            score: candidates[0].score,
+            reranked: false,
+            rerankerFailed: true,
+            candidates,
+        };
+    }
 }
 
-export async function runGeneralAgent({ prompt, provider = 'ollama', embedEndpoint, apiKey, embedModel }) {
-    const { article, score } = await findBestArticle(prompt, { provider, embedEndpoint, apiKey, embedModel });
+export async function runGeneralAgent({ prompt, provider = 'ollama', embedEndpoint, apiKey, embedModel, reranker }) {
+    const { article, score, reranked, candidates } = await findBestArticle(prompt, {
+        provider, embedEndpoint, apiKey, embedModel, reranker,
+    });
     const body =
         `Here's a help article that should answer your question:\n\n` +
         `**${article.title}** (${article.category})\n${article.url}\n\n` +
         `If you have other questions about this topic, please contact our customer support.`;
-    return { response: body, article, score };
+    return { response: body, article, score, reranked, candidates };
 }
