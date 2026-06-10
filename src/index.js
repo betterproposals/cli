@@ -549,12 +549,18 @@ program
     .option('--num-ctx <n>', 'Ollama context window in tokens (MCP path only)')
     .option('--max-iterations <n>', 'Max tool-calling rounds on the MCP path', '8')
     .option('--max-tool-items <n>', 'Max items kept from a tool result `data` array on the MCP path')
+    .option('--token <value>', 'Use this Better Proposals API token instead of local credentials (server-side / web-agent use; implies --openrouter)')
     .option('--json', 'Output the structured ask result (path, scores, response, trace) as JSON')
     .action(async (prompt, opts) => {
         try {
+            if (opts.token) {
+                const { setOverrideToken } = await import('./auth.js');
+                setOverrideToken(opts.token);
+            }
+            const useOpenRouter = opts.openrouter || !!opts.token;
             const result = await ask({
                 prompt,
-                provider: opts.openrouter ? 'openrouter' : undefined,
+                provider: useOpenRouter ? 'openrouter' : undefined,
                 endpoint: opts.endpoint,
                 translatorInModel: opts.translatorIn,
                 translatorOutModel: opts.translatorOut,
