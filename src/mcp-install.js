@@ -1,6 +1,6 @@
 import { homedir } from 'os';
 import { join } from 'path';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import { execSync } from 'child_process';
 
 export const TARGETS = ['claude-desktop', 'claude-code', 'cursor', 'gemini'];
@@ -17,10 +17,21 @@ function configPath(target) {
     const isWindows = process.platform === 'win32';
 
     switch (target) {
-        case 'claude-desktop':
-            return isWindows
-                ? join(process.env.APPDATA ?? '', 'Claude', 'claude_desktop_config.json')
-                : join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+        case 'claude-desktop': {
+            if (!isWindows) {
+                return join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+            }
+            // Claude Desktop from the Microsoft Store uses a sandboxed LocalCache path.
+            // The package folder name contains a publisher hash, so we detect it dynamically.
+            const packagesDir = join(process.env.LOCALAPPDATA ?? '', 'Packages');
+            try {
+                const claudePkg = readdirSync(packagesDir).find(e => e.startsWith('Claude_'));
+                if (claudePkg) {
+                    return join(packagesDir, claudePkg, 'LocalCache', 'Roaming', 'Claude', 'claude_desktop_config.json');
+                }
+            } catch { /* Packages dir absent — not a Store install */ }
+            return join(process.env.APPDATA ?? '', 'Claude', 'claude_desktop_config.json');
+        }
         case 'cursor':
             return join(home, '.cursor', 'mcp.json');
         default:
