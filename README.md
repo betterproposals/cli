@@ -239,7 +239,25 @@ ollama pull qwen3.5:9b
 | `--num-ctx <n>` | Ollama context window (MCP path only) | inherits `ai` defaults |
 | `--max-iterations <n>` | Max tool-calling rounds on the MCP path | `8` |
 | `--max-tool-items <n>` | Cap on tool-result `data` array items | inherits `ai` defaults |
+| `--token <value>` | Use this Better Proposals API token directly (skips local keychain lookup; implies `--openrouter`). Intended for server-side / web-agent callers that hold their own token. | — |
 | `--json` | Output structured `{language, decision, mcpTier, mcpModel, article, response, englishResponse, trace}` | off |
+
+### Server-side use (`--token`)
+
+The web-app `Ask AI` page and any third-party orchestrator that already holds a per-user Better Proposals token can call the CLI without running `betterproposals login` first:
+
+```bash
+betterproposals ask "create a proposal for Acme" \
+    --openrouter \
+    --session conv-101-42 \
+    --token <64-char-cli-token> \
+    --json
+```
+
+When `--token` is provided:
+- Local keychain / credentials-file lookup is skipped entirely.
+- If the token expires the CLI throws (`Token expired. The caller must re-issue a token.`); the web agent's PHP wrapper catches this, rotates the token in `CLI_User_Tokens`, and retries.
+- The session file is still keyed by `--session`, so multiple users can share the same host without colliding.
 
 ### Debugging
 

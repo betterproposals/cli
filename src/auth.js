@@ -285,13 +285,26 @@ async function refreshTokens(creds, retryOnce = true) {
     throw new Error(`Unexpected token refresh error: ${response.status}`);
 }
 
+// Server-side override: when a caller (e.g. the PHP web agent) passes a
+// --token value, we skip local keychain/file lookup entirely.
+let overrideToken = null;
+export function setOverrideToken(token) {
+    overrideToken = token || null;
+}
+
 export async function getAccessToken() {
+    if (overrideToken) return overrideToken;
     const creds = await getCredentials();
     if (!creds) throw new Error('Not authenticated. Run `betterproposals login` first.');
     return creds.access_token;
 }
 
 export async function refreshAccessToken() {
+    if (overrideToken) {
+        // In server-side token mode, refresh is the caller's responsibility
+        // (PHP rotates the CLI_User_Tokens row and passes a fresh token).
+        throw new Error('Token expired. The caller must re-issue a token.');
+    }
     const creds = await getCredentials();
     if (!creds) throw new Error('Not authenticated. Run `betterproposals login` first.');
     return refreshTokens(creds);
