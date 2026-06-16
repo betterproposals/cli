@@ -1,12 +1,16 @@
 import { basename, dirname, join } from 'path';
-import { chmodSync, renameSync, writeFileSync, existsSync, unlinkSync } from 'fs';
-import { execSync } from 'child_process';
+import { homedir } from 'os';
+import { chmodSync, renameSync, writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { execSync, spawn } from 'child_process';
 import pkg from '../package.json';
 
 const VERSION = pkg.version;
 
 const REPO = 'betterproposals/cli';
 const API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`;
+
+const CACHE_PATH = join(homedir(), '.betterproposals', 'update-check.json');
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // re-check at most once a day
 
 // Maps the running platform/arch to the release asset names produced by the
 // `build:*` scripts in package.json. Keep this in sync with those targets.
@@ -157,4 +161,68 @@ export async function update({ check = false, force = false } = {}) {
     }
 
     console.log('Done. Re-run your command to use the new version.');
+}
+
+// ---------------------------------------------------------------------------
+// Passive "update available" notifier
+// ---------------------------------------------------------------------------
+
+function readCache() {
+    try {
+        return JSON.parse(readFileSync(CACHE_PATH, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+function writeCache(latest) {
+    mkdirSync(dirname(CACHE_PATH), { recursive: true });
+    writeFileSync(CACHE_PATH, JSON.stringify({ checkedAt: Date.now(), latest }) + '\n', 'utf8');
+}
+
+// Run by the hidden `__refresh-update-cache` subcommand in a detached child.
+// Best-effort: any failure (e.g. private repo without GITHUB_TOKEN) is swallowed
+// so the cache just stays stale and no notice is shown. Never prints, never throws.
+export async function refreshUpdateCache() {
+    try {
+        const release = await fetchLatestRelease();
+        if (release?.tag_name) writeCache(release.tag_name);
+    } catch {
+        /* silent */
+    }
+}
+
+// Called after a normal command finishes (commander postAction hook). Reads the
+// cached latest version and prints a one-line nudge to stderr if a newer release
+// exists, then kicks off a detached background refresh when the cache is stale.
+export function notifyUpdate() {
+    // Skip on source/dev runs, when opted out, in CI, or when stderr isn't an
+    // interactive terminal (piped/redirected output, automation).
+    if (
+        VERSION === '0.0.1' ||
+        process.env.BETTERPROPOSALS_NO_UPDATE_CHECK ||
+        process.env.CI ||
+        !process.stderr.isTTY
+    ) {
+        return;
+    }
+
+    const cache = readCache();
+
+    if (cache?.latest && compareVersions(cache.latest, `v${VERSION}`) > 0) {
+        process.stderr.write(
+            `\nUpdate available: v${VERSION} → ${cache.latest} — run \`betterproposals update\` to upgrade.\n`
+        );
+    }
+
+    if (!cache || Date.now() - (cache.checkedAt || 0) > CHECK_INTERVAL_MS) {
+        try {
+            spawn(process.execPath, ['__refresh-update-cache'], {
+                detached: true,
+                stdio: 'ignore',
+            }).unref();
+        } catch {
+            /* spawning must never break the parent command */
+        }
+    }
 }

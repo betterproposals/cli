@@ -308,6 +308,19 @@ GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] betterproposals update
 Once the repo is public, no token is needed. Running from source (`bun src/index.js`) prints a
 notice instead — use `git pull` / `bun install` to update a source checkout.
 
+#### Update notifications
+
+After any command, the CLI prints a one-line notice to **stderr** if a newer release exists, e.g.:
+
+```
+Update available: v0.5.0 → v0.5.1 — run `betterproposals update` to upgrade.
+```
+
+The check is non-blocking (refreshed in the background, at most once every 24h, cached at
+`~/.betterproposals/update-check.json`) and only shows in an interactive terminal — it's
+suppressed when output is piped/redirected, in CI, or on source runs, and never touches stdout
+so `--json` output stays clean. Opt out entirely with `BETTERPROPOSALS_NO_UPDATE_CHECK=1`.
+
 ---
 
 ### `documents all`
