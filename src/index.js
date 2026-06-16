@@ -39,6 +39,20 @@ program
         }
     });
 
+program
+    .command('update')
+    .description('Check for a newer version and update the CLI in place')
+    .option('--check', 'Only check whether a newer version exists; do not install')
+    .option('--force', 'Reinstall the latest version even if already up to date')
+    .action(async (opts) => {
+        try {
+            await update({ check: opts.check, force: opts.force });
+        } catch (err) {
+            console.error('Update failed:', err.message);
+            process.exit(1);
+        }
+    });
+
 const documentsCmd = program
     .command('documents')
     .description('Manage documents');
