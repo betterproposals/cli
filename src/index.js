@@ -5,13 +5,15 @@ import { companies, currencies, documents, documentTypes, settings, templates } 
 import { install, uninstall, TARGETS } from './mcp-install.js';
 import { runAgent } from './ai.js';
 import { ask } from './ask.js';
+import { update } from './update.js';
+import pkg from '../package.json';
 
 const program = new Command();
 
 program
     .name('betterproposals')
     .description('Official CLI for Better Proposals')
-    .version('0.0.1');
+    .version(pkg.version);
 
 program
     .command('login')

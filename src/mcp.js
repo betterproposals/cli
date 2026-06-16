@@ -2,10 +2,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { TOOLS } from './tools.js';
+import pkg from '../package.json';
 
 const server = new McpServer({
     name: 'Better Proposals',
-    version: '0.0.1',
+    version: pkg.version,
 });
 
 function ok(data) {

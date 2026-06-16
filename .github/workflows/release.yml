@@ -24,6 +24,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Stamp version
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          tmp=$(jq --arg v "$VER" '.version = $v' package.json)
+          printf '%s\n' "$tmp" > package.json
+
       - name: Build all targets
         run: bun run build:all
 
