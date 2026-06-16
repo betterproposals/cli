@@ -284,6 +284,32 @@ betterproposals login
 
 ---
 
+### `update`
+
+Check GitHub for a newer release and update the CLI binary (and the companion
+`betterproposals-mcp` binary, if it's on your PATH) in place.
+
+```bash
+betterproposals update [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--check` | Only report whether a newer version exists; don't install |
+| `--force` | Reinstall the latest version even if you're already up to date |
+
+**While the repo is private**, set a GitHub Personal Access Token with `repo` scope so the
+version check and download can reach the private releases:
+
+```bash
+GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] betterproposals update
+```
+
+Once the repo is public, no token is needed. Running from source (`bun src/index.js`) prints a
+notice instead — use `git pull` / `bun install` to update a source checkout.
+
+---
+
 ### `documents all`
 
 List all documents.
