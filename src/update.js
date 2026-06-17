@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'path';
 import { homedir } from 'os';
-import { chmodSync, renameSync, writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { chmodSync, renameSync, writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, accessSync, constants } from 'fs';
 import { execSync, spawn } from 'child_process';
 import pkg from '../package.json';
 
@@ -80,7 +80,28 @@ function assetUrl(release, name) {
     return asset.url || asset.browser_download_url;
 }
 
+// Replacing the binary writes a temp file into its directory and renames over
+// it — both need write permission on that directory. Check up front so we fail
+// with actionable guidance before downloading ~64 MB, rather than a cryptic
+// EACCES on the temp file.
+function assertWritableDir(targetPath) {
+    const dir = dirname(targetPath);
+    try {
+        accessSync(dir, constants.W_OK);
+    } catch {
+        const sudoHint = process.env.GITHUB_TOKEN
+            ? 'sudo env GITHUB_TOKEN=<your-token> betterproposals update'
+            : 'sudo betterproposals update';
+        throw new Error(
+            `No write permission for ${dir} (where ${basename(targetPath)} is installed).\n` +
+            `Re-run with elevated privileges:\n  ${sudoHint}\n` +
+            '(sudo strips environment variables, so pass GITHUB_TOKEN through `env` while the repo is private).'
+        );
+    }
+}
+
 async function replaceBinary(targetPath, url) {
+    assertWritableDir(targetPath);
     const response = await fetch(url, { headers: githubHeaders('application/octet-stream') });
     if (!response.ok) {
         throw new Error(`Failed to download ${basename(targetPath)}: HTTP ${response.status}.`);
