@@ -158,6 +158,11 @@ export async function update({ check = false, force = false } = {}) {
     const latest = release.tag_name;
     const current = `v${VERSION}`;
 
+    // We just did an authenticated live check. Update the cache so the passive
+    // notifier can nudge on later commands without needing its own (token-gated)
+    // background refresh.
+    if (latest) writeCache(latest);
+
     if (!force && compareVersions(latest, current) <= 0) {
         console.log(`Already on the latest version (${current}).`);
         return;
