@@ -192,37 +192,80 @@ export async function refreshUpdateCache() {
     }
 }
 
-// Called after a normal command finishes (commander postAction hook). Reads the
-// cached latest version and prints a one-line nudge to stderr if a newer release
-// exists, then kicks off a detached background refresh when the cache is stale.
-export function notifyUpdate() {
-    // Skip on source/dev runs, when opted out, in CI, or when stderr isn't an
-    // interactive terminal (piped/redirected output, automation).
-    if (
-        VERSION === '0.0.1' ||
-        process.env.BETTERPROPOSALS_NO_UPDATE_CHECK ||
-        process.env.CI ||
-        !process.stderr.isTTY
-    ) {
-        return;
-    }
+const updateCheckDisabled = () =>
+    VERSION === '0.0.1' || !!process.env.BETTERPROPOSALS_NO_UPDATE_CHECK;
 
+// Returns { current, latest } when the cached check shows a newer release,
+// else null. Shared by every passive surface (CLI notifier, MCP instructions,
+// agent system prompt). Honors the global opt-out and skips dev/source runs.
+export function getUpdateInfo() {
+    if (updateCheckDisabled()) return null;
     const cache = readCache();
-
     if (cache?.latest && compareVersions(cache.latest, `v${VERSION}`) > 0) {
+        return { current: `v${VERSION}`, latest: cache.latest };
+    }
+    return null;
+}
+
+// Resolve a `betterproposals` CLI binary to spawn the hidden refresh on. From
+// the MCP server, process.execPath is `betterproposals-mcp` (which has no such
+// subcommand), so fall back to the CLI on PATH.
+function resolveCliBinary() {
+    const self = basename(process.execPath);
+    if (self.startsWith('betterproposals') && !self.includes('mcp')) return process.execPath;
+    return resolveOnPath('betterproposals');
+}
+
+// If the cache is missing or stale, fire a detached, unref'd child to refresh it
+// for next time — zero latency for the caller. Triggered from the CLI notifier
+// and from the MCP/agent entry points so MCP-only users still get a warm cache.
+export function maybeRefreshUpdateCache() {
+    if (updateCheckDisabled()) return;
+    const cache = readCache();
+    if (cache && Date.now() - (cache.checkedAt || 0) <= CHECK_INTERVAL_MS) return;
+    const bin = resolveCliBinary();
+    if (!bin) return;
+    try {
+        spawn(bin, ['__refresh-update-cache'], { detached: true, stdio: 'ignore' }).unref();
+    } catch {
+        /* spawning must never break the caller */
+    }
+}
+
+// Explicit, on-demand status for the `cli_status` agent/MCP tool. Unlike the
+// passive surfaces this does a LIVE check (the agent is already awaiting the
+// tool call) so the answer is deterministic, falling back to cache on failure.
+// Ignores the passive opt-out — the user explicitly asked.
+export async function cliStatus() {
+    let latest = null;
+    try {
+        const release = await fetchLatestRelease();
+        latest = release?.tag_name ?? null;
+        if (latest) writeCache(latest);
+    } catch {
+        latest = readCache()?.latest ?? null;
+    }
+    const latestClean = latest ? latest.replace(/^v/, '') : null;
+    return {
+        current: VERSION,
+        latest: latestClean,
+        updateAvailable: latestClean ? compareVersions(`v${latestClean}`, `v${VERSION}`) > 0 : false,
+        updateCommand: 'betterproposals update',
+        ...(latestClean ? {} : { note: 'Latest version is unknown — the check failed (private repo needs GITHUB_TOKEN, or no network).' }),
+    };
+}
+
+// Called after a normal command finishes (commander postAction hook). Prints a
+// one-line nudge to stderr if a newer release is cached, then warms the cache in
+// the background. Gated to interactive terminals (skips pipes/redirects/CI) so
+// stdout/JSON output is never touched.
+export function notifyUpdate() {
+    if (process.env.CI || !process.stderr.isTTY) return;
+    const info = getUpdateInfo();
+    if (info) {
         process.stderr.write(
-            `\nUpdate available: v${VERSION} → ${cache.latest} — run \`betterproposals update\` to upgrade.\n`
+            `\nUpdate available: ${info.current} → ${info.latest} — run \`betterproposals update\` to upgrade.\n`
         );
     }
-
-    if (!cache || Date.now() - (cache.checkedAt || 0) > CHECK_INTERVAL_MS) {
-        try {
-            spawn(process.execPath, ['__refresh-update-cache'], {
-                detached: true,
-                stdio: 'ignore',
-            }).unref();
-        } catch {
-            /* spawning must never break the parent command */
-        }
-    }
+    maybeRefreshUpdateCache();
 }

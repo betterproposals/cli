@@ -321,6 +321,20 @@ The check is non-blocking (refreshed in the background, at most once every 24h, 
 suppressed when output is piped/redirected, in CI, or on source runs, and never touches stdout
 so `--json` output stays clean. Opt out entirely with `BETTERPROPOSALS_NO_UPDATE_CHECK=1`.
 
+**Via MCP / AI agents.** A terminal nudge never reaches users who only drive the CLI through an
+agent, so the same cached check is surfaced where agents actually read:
+
+- **MCP server** — when a newer release is cached, the server advertises it in its `instructions`
+  at connection time, so the agent can proactively tell the user to run `betterproposals update`.
+- **`ai` / `ask` agents** — the note is appended to the agent's system prompt.
+- **`cli_status` tool** — an on-demand tool (exposed over MCP and to the `ai`/`ask` agents) that
+  does a *live* check and returns `{ current, latest, updateAvailable, updateCommand }`. Use it
+  when asked "what version am I on?" or "is the CLI up to date?". This is the deterministic path;
+  the instructions/system-prompt notes are best-effort nudges.
+
+All of these are gated by the same `BETTERPROPOSALS_NO_UPDATE_CHECK=1` opt-out, except the
+explicit `cli_status` tool, which always answers when called.
+
 ---
 
 ### `documents all`

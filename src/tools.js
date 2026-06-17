@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
+import { cliStatus } from './update.js';
 
 // Single source of truth for the tools exposed both via MCP (`src/mcp.js`)
 // and via the Llama agent loop (`src/ai.js`). Each tool is { name,
@@ -188,6 +189,12 @@ export const TOOLS = [
         description: 'Get a single template by ID',
         inputSchema: { id: z.number().int().positive().describe('Template ID') },
         handler: ({ id }) => templates.get(id),
+    },
+    {
+        name: 'cli_status',
+        description: 'Report the Better Proposals CLI version and whether a newer release is available. Use when the user asks what version they are on, whether the CLI is up to date, or how to update.',
+        inputSchema: {},
+        handler: () => cliStatus(),
     },
 ];
 

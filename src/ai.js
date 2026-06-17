@@ -4,6 +4,7 @@ import { tmpdir, homedir } from 'os';
 import { join, dirname } from 'path';
 import { TOOLS, TOOLS_BY_NAME } from './tools.js';
 import { resolveProvider, resolveApiKey, chatWithTools, formatToolResultMessage } from './provider.js';
+import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
 
 // Agent loop that lets a locally-hosted Llama (or any Ollama-compatible
 // endpoint) drive the Better Proposals tools exposed by `src/tools.js`.
@@ -38,7 +39,7 @@ function buildDefaultSystem() {
     // reports yesterday and the model ends up answering for the wrong day.
     const d = new Date();
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return `You are the Better Proposals assistant. You help the user manage their proposals, companies, templates, and account settings by calling the provided tools.
+    const base = `You are the Better Proposals assistant. You help the user manage their proposals, companies, templates, and account settings by calling the provided tools.
 
 Today's date is ${today}. Use this whenever the user asks about "today", "yesterday", or relative dates.
 
@@ -50,6 +51,12 @@ Rules:
 - For date-based counting questions (e.g. "how many sent today/yesterday/this week"), the API returns items sorted newest-first. Page 1 ALWAYS contains the most recent items. Do NOT call the same paginated list tool again with page=2, page=3, etc. just to "check more" — if today's date isn't in page 1, it isn't in the dataset.
 - Pagination guidance applies ONLY to paginated list tools (documents_list_*, companies_list, templates_list, currencies_list, document_types_list, settings_merge_tags). For write/get tools (documents_create, documents_get, companies_create, etc.) call them whenever they are needed — this restriction does not apply.
 - When you have enough information, reply with a direct natural-language answer and stop calling tools.`;
+
+    const update = getUpdateInfo();
+    return update
+        ? base + `\n\nA newer Better Proposals CLI is available (${update.current} → ${update.latest}). ` +
+            'If appropriate, let the user know they can update by running `betterproposals update`.'
+        : base;
 }
 
 // Minimal zod → JSON-Schema converter covering the types used in src/tools.js
@@ -347,6 +354,10 @@ export async function runAgent({
     if (!prompt || typeof prompt !== 'string') {
         throw new Error('runAgent: `prompt` is required.');
     }
+
+    // Warm the version-check cache in the background so the update note in the
+    // system prompt (see buildDefaultSystem) is current on the next invocation.
+    maybeRefreshUpdateCache();
 
     // Provider-aware defaults: explicit model wins, else the env override
     // (Ollama only), else the per-provider default.
