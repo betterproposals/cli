@@ -1,6 +1,6 @@
 import { getAccessToken, refreshAccessToken } from './auth.js';
 
-const BASE_URL = 'https://cli-api.staging.betterproposals.io'; // TODO: Replace with production URL
+const BASE_URL = 'https://api.betterproposals.io';
 
 async function request(method, path, { params = {}, body } = {}, retry = true) {
     const token = await getAccessToken();

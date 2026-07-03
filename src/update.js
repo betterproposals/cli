@@ -60,10 +60,7 @@ function githubHeaders(accept) {
 async function fetchLatestRelease() {
     const response = await fetch(API_LATEST, { headers: githubHeaders('application/vnd.github+json') });
     if (!response.ok) {
-        const hint = response.status === 404 || response.status === 401
-            ? ' (the repo is private — set GITHUB_TOKEN to a token with `repo` scope)'
-            : '';
-        throw new Error(`GitHub API returned ${response.status}${hint}.`);
+        throw new Error(`GitHub API returned ${response.status}.`);
     }
     return response.json();
 }
@@ -89,13 +86,9 @@ function assertWritableDir(targetPath) {
     try {
         accessSync(dir, constants.W_OK);
     } catch {
-        const sudoHint = process.env.GITHUB_TOKEN
-            ? 'sudo env GITHUB_TOKEN=<your-token> betterproposals update'
-            : 'sudo betterproposals update';
         throw new Error(
             `No write permission for ${dir} (where ${basename(targetPath)} is installed).\n` +
-            `Re-run with elevated privileges:\n  ${sudoHint}\n` +
-            '(sudo strips environment variables, so pass GITHUB_TOKEN through `env` while the repo is private).'
+            'Re-run with elevated privileges:\n  sudo betterproposals update'
         );
     }
 }
@@ -207,8 +200,8 @@ function writeCache(latest) {
 }
 
 // Run by the hidden `__refresh-update-cache` subcommand in a detached child.
-// Best-effort: any failure (e.g. private repo without GITHUB_TOKEN) is swallowed
-// so the cache just stays stale and no notice is shown. Never prints, never throws.
+// Best-effort: any failure (e.g. no network) is swallowed so the cache just
+// stays stale and no notice is shown. Never prints, never throws.
 export async function refreshUpdateCache() {
     try {
         const release = await fetchLatestRelease();
@@ -277,7 +270,7 @@ export async function cliStatus() {
         latest: latestClean,
         updateAvailable: latestClean ? compareVersions(`v${latestClean}`, `v${VERSION}`) > 0 : false,
         updateCommand: 'betterproposals update',
-        ...(latestClean ? {} : { note: 'Latest version is unknown — the check failed (private repo needs GITHUB_TOKEN, or no network).' }),
+        ...(latestClean ? {} : { note: 'Latest version is unknown — the check failed (no network, or GitHub is unreachable).' }),
     };
 }
 
