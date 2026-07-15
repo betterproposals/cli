@@ -95,6 +95,71 @@ export const TOOLS = [
             }),
     },
     {
+        name: 'documents_edit',
+        description: 'Edit an existing document. Only the provided fields are changed. When contacts are provided they replace the existing ones; contacts that already signed are never removed or modified.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            company: z.string().optional().describe('Company ID or name. Creates a new company if the name is not found.'),
+            cover: z.number().int().optional().describe('Cover ID'),
+            document_type: z.string().optional().describe('Document type ID or name'),
+            brand: z.number().int().optional().describe('Brand ID'),
+            currency: z.string().length(3).optional().describe('Currency 3-letter code, e.g. USD'),
+            tax: z.string().optional().describe('Enable tax'),
+            tax_label: z.string().optional().describe('Tax label'),
+            tax_amount: z.string().optional().describe('Tax amount'),
+            description: z.string().optional().describe('Document description'),
+            contacts: z.string().optional().describe('Contacts as JSON array, replaces the existing ones, e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","Signature":true}]'),
+            merge_tags: z.string().optional().describe('Merge tags as JSON array, e.g. [{"tag":"my_tag","value":"My Value"}]'),
+        },
+        handler: ({ id, company, cover, document_type, brand, currency, tax, tax_label, tax_amount, description, contacts, merge_tags }) =>
+            documents.edit({
+                id, company, cover,
+                documentType: document_type,
+                brand, currency, tax,
+                taxLabel: tax_label,
+                taxAmount: tax_amount,
+                description,
+                contacts, mergeTags: merge_tags,
+            }),
+    },
+    {
+        name: 'documents_populate',
+        description: 'Populate a document with sections and blocks, like the editor does. Each section becomes a page and can contain blocks of type: content (HTML content block), image (full width image), video, pricing (pricing block with tables and line items), acceptance (signing block) and library (Content Library element). A document can have only one pricing block and one acceptance block.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            sections: z.string().describe(
+                'Sections as JSON array. Each section: {"Name":"Introduction","Blocks":[...]}. Blocks by type: ' +
+                '{"Type":"content","Content":"<p>HTML</p>","Colour":"FFFFFF","TextColour":"2D2D2D"} (Content can be an array of 2 strings for two columns); ' +
+                '{"Type":"image","ImageSrc":"https://...","AltText":"..."}; ' +
+                '{"Type":"video","VideoType":"youtube|vimeo|wistia|upload","VideoSrc":"https://...","Layout":0}; ' +
+                '{"Type":"pricing","Tables":[{"Title":"...","Items":[{"Label":"...","Description":"...","UnitCost":100,"Quantity":1,"RecurringType":"one-off|monthly|quarterly|annual","Optional":false}]}]}; ' +
+                '{"Type":"acceptance","SignType":0,"ButtonText":"Sign Document","SignatureStatement":"..."}; ' +
+                '{"Type":"library","LibraryElementID":123,"LibraryElementType":"customblock|text|video|bigphoto"}'
+            ),
+        },
+        handler: ({ id, sections }) => documents.populate({ id, sections }),
+    },
+    {
+        name: 'documents_send',
+        description: 'Send a document to its recipients by email, each one receiving their personal link. Recipients that already signed cannot be removed or modified. If recipients is omitted, the document is sent to its existing contacts. Sending counts towards the monthly sending limit of the plan.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            subject: z.string().optional().describe('Email subject line. Supports merge tags like {{company_name}} and {{first_name}}. Omit to use the subject saved on the document or the brand default'),
+            message: z.string().optional().describe('Personal message included in the email. Supports merge tags. Omit to use the message saved on the document or the brand default'),
+            recipients: z.string().optional().describe('Recipients as JSON array (max 25), e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","RequiredToSign":true}]. Omit to send to the existing contacts.'),
+            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear (default: false)'),
+            password: z.string().optional().describe('Password protection for the document'),
+            just_link_generation: z.boolean().optional().describe('When true, only generates the personal links without sending emails (default: false)'),
+        },
+        handler: ({ id, subject, message, recipients, sign_order, password, just_link_generation }) =>
+            documents.send({
+                id, subject, message, recipients,
+                signOrder: sign_order,
+                password,
+                justLinkGeneration: just_link_generation,
+            }),
+    },
+    {
         name: 'documents_create_cover',
         description: 'Create a document cover',
         inputSchema: {
@@ -111,6 +176,28 @@ export const TOOLS = [
         handler: ({ brand_id, cover_name, bg_colour, headline, subheader, text_colour, text_align, button_style, button_text }) =>
             documents.createCover({
                 brandId: brand_id, coverName: cover_name, bgColour: bg_colour,
+                headline, subheader, textColour: text_colour,
+                textAlign: text_align, buttonStyle: button_style, buttonText: button_text,
+            }),
+    },
+    {
+        name: 'documents_edit_cover',
+        description: 'Edit a document cover. Only the provided fields are changed.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Cover ID'),
+            brand_id: z.number().int().optional().describe('Brand ID'),
+            cover_name: z.string().optional().describe('Cover name'),
+            bg_colour: z.string().optional().describe('Background colour hex'),
+            headline: z.string().optional().describe('Headline text'),
+            subheader: z.string().optional().describe('Subheader text'),
+            text_colour: z.string().optional().describe('Text colour hex'),
+            text_align: z.string().optional().describe('Text alignment'),
+            button_style: z.string().optional().describe('Button style'),
+            button_text: z.string().optional().describe('Button text'),
+        },
+        handler: ({ id, brand_id, cover_name, bg_colour, headline, subheader, text_colour, text_align, button_style, button_text }) =>
+            documents.editCover({
+                id, brandId: brand_id, coverName: cover_name, bgColour: bg_colour,
                 headline, subheader, textColour: text_colour,
                 textAlign: text_align, buttonStyle: button_style, buttonText: button_text,
             }),

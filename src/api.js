@@ -171,4 +171,63 @@ export const documents = {
             },
         });
     },
+
+    edit({ id, company, cover, documentType, brand, currency, tax, taxLabel, taxAmount, description, contacts, mergeTags } = {}) {
+        return request('POST', '/proposal/edit', {
+            body: {
+                ID: id,
+                Company: company,
+                Cover: cover,
+                DocumentType: documentType,
+                Brand: brand,
+                Currency: currency,
+                Tax: tax,
+                TaxLabel: taxLabel,
+                TaxAmount: taxAmount,
+                Description: description,
+                Contacts: contacts,
+                MergeTags: mergeTags,
+            },
+        });
+    },
+
+    editCover({ id, brandId, coverName, bgColour, headline, subheader, textColour, textAlign, buttonStyle, buttonText } = {}) {
+        return request('POST', '/proposal/cover/edit', {
+            body: {
+                ID: id,
+                BrandID: brandId,
+                CoverName: coverName,
+                BGColour: bgColour,
+                Headline: headline,
+                Subheader: subheader,
+                TextColour: textColour,
+                TextAlign: textAlign,
+                ButtonStyle: buttonStyle,
+                ButtonText: buttonText,
+            },
+        });
+    },
+
+    populate({ id, sections } = {}) {
+        return request('POST', '/proposal/populate', {
+            body: {
+                ID: id,
+                Sections: sections,
+            },
+        });
+    },
+
+    send({ id, subject, message, recipients, signOrder, password, justLinkGeneration } = {}) {
+        return request('POST', '/proposal/send', {
+            body: {
+                ID: id,
+                Subject: subject,
+                Message: message,
+                Recipients: recipients,
+                SignOrder: signOrder,
+                Password: password,
+                JustLinkGeneration: justLinkGeneration,
+            },
+        });
+    },
 };
