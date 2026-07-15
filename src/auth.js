@@ -33,11 +33,11 @@ async function secretsDelete() {
     try { await unlink(CRED_FILE); } catch { /* doesn't exist */ }
 }
 
-const APP_BASE = 'https://cli.dev.betterproposals.io/2/cli/'; //TODO: Replace with production URL
+const APP_BASE = 'https://betterproposals.io/2/cli/';
 
-const LOGIN_BASE  = APP_BASE + 'login';   //TODO: Replace with production URL
-const TOKEN_URL   = APP_BASE + 'token';   //TODO: Replace with production URL
-const REFRESH_URL = APP_BASE + 'refresh'; //TODO: Replace with production URL
+const LOGIN_BASE  = APP_BASE + 'login';
+const TOKEN_URL   = APP_BASE + 'token';
+const REFRESH_URL = APP_BASE + 'refresh';
 
 const BLOCKED_HTML = `<!DOCTYPE html>
 <html lang="en">

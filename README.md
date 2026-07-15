@@ -1,43 +1,14 @@
-# Better Proposals CLI (Developer Setup)
-_(This will be user-facing CLI documentation later on)_
+# Better Proposals CLI
 
 ## Install
 
 ### macOS / Linux
 
-**While the repo is private (testing phase):** 
-
-You need a GitHub Personal Access Token with `repo` scope. Generate one at `github.com → Settings → Developer settings → Personal access tokens` or use an existing one.
-
-Since we don't have a "release" tag yet (just pre-release), you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
-
-```bash
-curl -fsSL https://cli.dev.betterproposals.io/cli-install | env BP_CLI_VERSION=v0.5.4 GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] bash
-```
-
-**Once the repo is public:** 
-
-Users will be able to just install the latest version with:
-
 ```bash
 curl -fsSL https://betterproposals.io/cli-install | bash
 ```
 
----
-
 ### Windows (PowerShell)
-
-**While the repo is private:**
-
-Same with `Windows/PowerShell`, you'll need to install a specific version of the CLI, specified with the `BP_CLI_VERSION` env var.
-
-```powershell
-$env:GITHUB_TOKEN="[PERSONAL_ACCESS_TOKEN]"; $env:BP_CLI_VERSION="v0.5.4"; iwr https://cli.dev.betterproposals.io/cli-install-windows | iex
-```
-
-**Once the repo is public:**
-
-Again, same as Unix, users will be able to just install the latest version with:
 
 ```powershell
 iwr https://betterproposals.io/cli-install-windows | iex
@@ -45,7 +16,7 @@ iwr https://betterproposals.io/cli-install-windows | iex
 
 ---
 
-## Developer setup (from source)
+## Install from source
 
 ⚠️ Not needed if you installed the CLI via the `curl/iwr` command above. ⚠️
 
@@ -298,15 +269,8 @@ betterproposals update [options]
 | `--check` | Only report whether a newer version exists; don't install |
 | `--force` | Reinstall the latest version even if you're already up to date |
 
-**While the repo is private**, set a GitHub Personal Access Token with `repo` scope so the
-version check and download can reach the private releases:
-
-```bash
-GITHUB_TOKEN=[PERSONAL_ACCESS_TOKEN] betterproposals update
-```
-
-Once the repo is public, no token is needed. Running from source (`bun src/index.js`) prints a
-notice instead — use `git pull` / `bun install` to update a source checkout.
+Running from source (`bun src/index.js`) prints a notice instead — use `git pull` /
+`bun install` to update a source checkout.
 
 #### Update notifications
 
