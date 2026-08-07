@@ -5,6 +5,7 @@ import { join, dirname } from 'path';
 import { TOOLS, TOOLS_BY_NAME } from './tools.js';
 import { resolveProvider, resolveApiKey, chatWithTools, formatToolResultMessage } from './provider.js';
 import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
+import { describeLimit } from './limits.js';
 
 // Agent loop that lets a locally-hosted Llama (or any Ollama-compatible
 // endpoint) drive the Better Proposals tools exposed by `src/tools.js`.
@@ -50,7 +51,8 @@ Rules:
 - Never tell the user "you've shared a JSON response" or ask them to clarify what to do with the tool data. They already asked their question; just answer it directly using the data.
 - For date-based counting questions (e.g. "how many sent today/yesterday/this week"), the API returns items sorted newest-first. Page 1 ALWAYS contains the most recent items. Do NOT call the same paginated list tool again with page=2, page=3, etc. just to "check more" — if today's date isn't in page 1, it isn't in the dataset.
 - Pagination guidance applies ONLY to paginated list tools (documents_list_*, companies_list, templates_list, currencies_list, document_types_list, settings_merge_tags). For write/get tools (documents_create, documents_get, companies_create, etc.) call them whenever they are needed — this restriction does not apply.
-- When you have enough information, reply with a direct natural-language answer and stop calling tools.`;
+- When you have enough information, reply with a direct natural-language answer and stop calling tools.
+- ${describeLimit()} If content won't fit, shorten it or split it across parameters rather than sending it and hoping.`;
 
     const update = getUpdateInfo();
     return update

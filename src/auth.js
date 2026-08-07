@@ -2,6 +2,7 @@ import open from 'open';
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { clearLimitsCache } from './limits.js';
 
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
@@ -239,6 +240,9 @@ export async function login() {
         access_token:  data.access_token,
         refresh_token: data.refresh_token,
     }));
+    // Parameter limits vary by account, so anything cached belongs to whoever
+    // was logged in before.
+    clearLimitsCache();
     console.log('Login successful!');
 }
 
@@ -288,8 +292,19 @@ async function refreshTokens(creds, retryOnce = true) {
 // Server-side override: when a caller (e.g. the PHP web agent) passes a
 // --token value, we skip local keychain/file lookup entirely.
 let overrideToken = null;
+const limitsResetHooks = [];
+
+// api.js registers here rather than being imported: auth.js sits below api.js
+// in the dependency order and importing upward would create a cycle.
+export function onIdentityChange(fn) {
+    limitsResetHooks.push(fn);
+}
+
 export function setOverrideToken(token) {
     overrideToken = token || null;
+    // A different token may mean a different account, and the parameter limit
+    // is per-account.
+    for (const fn of limitsResetHooks) fn();
 }
 
 export async function getAccessToken() {
@@ -312,5 +327,6 @@ export async function refreshAccessToken() {
 
 export async function logout() {
     await secretsDelete();
+    clearLimitsCache();
     console.log('Logged out.');
 }

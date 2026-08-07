@@ -1,8 +1,9 @@
-import { getAccessToken, refreshAccessToken } from './auth.js';
+import { getAccessToken, refreshAccessToken, onIdentityChange } from './auth.js';
+import { assertParamLengths, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
 
 const BASE_URL = 'https://api.betterproposals.io';
 
-async function request(method, path, { params = {}, body } = {}, retry = true) {
+async function request(method, path, { params = {}, body, skipLimitCheck = false } = {}, retry = true) {
     const token = await getAccessToken();
 
     const url = new URL(path, BASE_URL);
@@ -16,6 +17,11 @@ async function request(method, path, { params = {}, body } = {}, retry = true) {
     };
 
     if (body) {
+        // Single choke point for every write in the CLI: check the per-parameter
+        // byte budget here rather than in each handler, so current and future
+        // write tools are covered without repeating themselves.
+        if (!skipLimitCheck) assertParamLengths(body, await getLimits());
+
         const form = new URLSearchParams();
         for (const [key, value] of Object.entries(body)) {
             if (value !== undefined) form.set(key, value);
@@ -28,7 +34,7 @@ async function request(method, path, { params = {}, body } = {}, retry = true) {
 
     if (response.status === 401 && retry) {
         await refreshAccessToken();
-        return request(method, path, { params, body }, false);
+        return request(method, path, { params, body, skipLimitCheck }, false);
     }
 
     if (!response.ok) {
@@ -43,9 +49,57 @@ async function request(method, path, { params = {}, body } = {}, retry = true) {
     return data;
 }
 
+// Memoised for the life of the process. The authoritative value comes from a
+// live call rather than the disk cache, because the limit is per-account and a
+// single process may be driving a different account than the last one did
+// (setOverrideToken, or a re-login). The disk cache is a warm start for the
+// advisory prose in limits.js, not the basis for rejecting a request.
+let limitsPromise = null;
+
+/**
+ * The parameter limits in force for the authenticated account.
+ *
+ * Never throws and never blocks a real operation: an API too old to serve
+ * /settings/limits, a network failure, or an expired session all fall back to
+ * the conservative default. Being wrong here costs an extra round trip and a
+ * server-side 400; throwing here would break every write.
+ */
+export function getLimits() {
+    if (limitsPromise) return limitsPromise;
+
+    limitsPromise = (async () => {
+        try {
+            const response = await settings.limits();
+            const limits = { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
+            writeLimitsCache(limits);
+            return limits;
+        } catch {
+            return readLimitsCache() ?? { ...DEFAULT_LIMITS };
+        }
+    })();
+
+    return limitsPromise;
+}
+
+// The override token swaps the acting account mid-process (the PHP web agent
+// passes one per invocation), which invalidates anything we resolved for the
+// previous one.
+export function resetLimits() {
+    limitsPromise = null;
+}
+
+onIdentityChange(resetLimits);
+
 export const settings = {
     get() {
         return request('GET', '/settings');
+    },
+
+    // skipLimitCheck guards against recursion: getLimits() calls this, and the
+    // check inside request() calls getLimits(). It is a GET with no body, so
+    // the check would never fire anyway — but the guard makes that explicit.
+    limits() {
+        return request('GET', '/settings/limits', { skipLimitCheck: true });
     },
 
     brand() {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, getLimits, settings, templates } from './api.js';
+import { getCachedLimits } from './limits.js';
 import { cliStatus } from './update.js';
 
 // Single source of truth for the tools exposed both via MCP (`src/mcp.js`)
@@ -18,6 +19,19 @@ const typeSchema = z.number().int().optional().describe(
 
 const pagination = { page: pageSchema, per_page: perPageSchema };
 const paginationWithType = { ...pagination, type: typeSchema };
+
+// Every parameter sent to a write tool is capped independently by the API. The
+// number is per-account and only known after an async lookup, so the schemas
+// carry it as advisory description text rather than a zod .max() — a static cap
+// baked in at module load would be wrong for allow-listed accounts. The real
+// enforcement happens in api.js against the live value.
+const MAX_BYTES = getCachedLimits().parameter_max_length;
+const LIMIT_NOTE = ` Max ${MAX_BYTES} bytes (call api_limits to confirm this account's exact budget).`;
+
+// The JSON-string fields are the real hazard: the whole serialised array counts
+// as ONE parameter, so every entry shares a single budget.
+const JSON_LIMIT_NOTE = ` The entire JSON string counts as a single parameter against the ` +
+    `${MAX_BYTES}-byte limit — all entries share that one budget, so keep values short or send fewer at a time.`;
 
 export const TOOLS = [
     {
@@ -81,8 +95,8 @@ export const TOOLS = [
             tax: z.string().optional().describe('Enable tax'),
             tax_label: z.string().optional().describe('Tax label'),
             tax_amount: z.string().optional().describe('Tax amount'),
-            contacts: z.string().optional().describe('Contacts as JSON array, e.g. [{"FirstName":"Jane","Email":"jane@example.com"}]'),
-            merge_tags: z.string().optional().describe('Merge tags as JSON array, e.g. [{"tag":"my_tag","value":"My Value"}]'),
+            contacts: z.string().optional().describe('Contacts as JSON array, e.g. [{"FirstName":"Jane","Email":"jane@example.com"}]' + JSON_LIMIT_NOTE),
+            merge_tags: z.string().optional().describe('Merge tags as JSON array, e.g. [{"tag":"my_tag","value":"My Value"}]' + JSON_LIMIT_NOTE),
         },
         handler: ({ company, cover, template, document_type, brand, currency, tax, tax_label, tax_amount, contacts, merge_tags }) =>
             documents.create({
@@ -99,14 +113,14 @@ export const TOOLS = [
         description: 'Create a document cover',
         inputSchema: {
             brand_id: z.number().int().optional().describe('Brand ID'),
-            cover_name: z.string().optional().describe('Cover name (default: Untitled)'),
+            cover_name: z.string().optional().describe('Cover name (default: Untitled)' + LIMIT_NOTE),
             bg_colour: z.string().optional().describe('Background colour hex (default: 111111)'),
-            headline: z.string().optional().describe('Headline text'),
-            subheader: z.string().optional().describe('Subheader text'),
+            headline: z.string().optional().describe('Headline text' + LIMIT_NOTE),
+            subheader: z.string().optional().describe('Subheader text' + LIMIT_NOTE),
             text_colour: z.string().optional().describe('Text colour hex (default: ffffff)'),
             text_align: z.string().optional().describe('Text alignment (default: left)'),
             button_style: z.string().optional().describe('Button style (default: round)'),
-            button_text: z.string().optional().describe('Button text'),
+            button_text: z.string().optional().describe('Button text' + LIMIT_NOTE),
         },
         handler: ({ brand_id, cover_name, bg_colour, headline, subheader, text_colour, text_align, button_style, button_text }) =>
             documents.createCover({
@@ -160,7 +174,7 @@ export const TOOLS = [
     {
         name: 'companies_create',
         description: 'Create a new company',
-        inputSchema: { company_name: z.string().describe('Company name') },
+        inputSchema: { company_name: z.string().describe('Company name' + LIMIT_NOTE) },
         handler: ({ company_name }) => companies.create({ companyName: company_name }),
     },
     {
@@ -173,7 +187,7 @@ export const TOOLS = [
         name: 'document_types_create',
         description: 'Create a new document type',
         inputSchema: {
-            type_name: z.string().describe('Document type name'),
+            type_name: z.string().describe('Document type name' + LIMIT_NOTE),
             type_colour: z.string().optional().describe('Colour hex code (default: #01A3EF)'),
         },
         handler: ({ type_name, type_colour }) => documentTypes.create({ typeName: type_name, typeColour: type_colour }),
@@ -189,6 +203,16 @@ export const TOOLS = [
         description: 'Get a single template by ID',
         inputSchema: { id: z.number().int().positive().describe('Template ID') },
         handler: ({ id }) => templates.get(id),
+    },
+    {
+        name: 'api_limits',
+        description:
+            'Report the maximum size allowed for a single parameter when creating or updating data. ' +
+            'The limit varies by account, so call this before writing long content — merge tag values, ' +
+            'cover headlines, contact lists — to check the budget you actually have. ' +
+            'The cap applies per parameter (not per request) and is measured in UTF-8 bytes.',
+        inputSchema: {},
+        handler: () => getLimits(),
     },
     {
         name: 'cli_status',
