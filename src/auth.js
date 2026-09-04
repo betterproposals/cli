@@ -62,6 +62,36 @@ const BLOCKED_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const UPGRADE_URL = 'https://betterproposals.io/2/upgrade/';
+
+// The CLI is a Premium / Enterprise feature (a trial is a trial of one of those,
+// so it qualifies). The server decides — this is only the copy for the refusal it
+// sends back, keyed on `plan_not_supported`.
+// Kept in step with CLI_PLAN_* in the web app's 2/cli/_access.php.
+const PLAN_MESSAGE = `CLI access isn't available on your current plan. Visit ${UPGRADE_URL} to upgrade.`;
+
+const PLAN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+<title>Upgrade required - Better Proposals</title>
+<link rel="preconnect" href="https://use.typekit.net">
+<link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
+</head>
+<body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+
+<div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
+    <div style="margin-bottom:32px;">
+        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
+    </div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">CLI access isn't available on your plan</div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">The Better Proposals CLI is available on the Premium and Enterprise plans. <a href="${UPGRADE_URL}" style="color:#5C5C5C;">Upgrade to get access.</a></div>
+</div>
+
+</body>
+</html>`;
+
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.
 const CANCELLED_HTML = `<!DOCTYPE html>
@@ -85,6 +115,24 @@ const CANCELLED_HTML = `<!DOCTYPE html>
 
 </body>
 </html>`;
+
+/**
+ * A plan refusal from /cli/token or /cli/refresh, or null if that isn't what
+ * this response is.
+ *
+ * Both endpoints answer 403 {"error":"plan_not_supported"} when the account's
+ * plan no longer includes the CLI. Without this the caller only sees a bare
+ * status code, which tells the user nothing about how to fix it.
+ */
+async function planRefusal(response) {
+    if (response.status !== 403) return null;
+    try {
+        const data = await response.json();
+        return data?.error === 'plan_not_supported' ? new Error(PLAN_MESSAGE) : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Browser-based login handshake.
@@ -164,6 +212,14 @@ export async function login() {
                 });
             }
 
+            if (errorParam === 'plan_not_supported') {
+                reject(new Error(PLAN_MESSAGE));
+                return new Response(PLAN_HTML, {
+                    status: 403,
+                    headers: {'Content-Type': 'text/html', 'Connection': 'close'},
+                });
+            }
+
             if (!code) {
                 reject(new Error('Missing code in callback'));
                 return new Response('Missing code.', {status: 400});
@@ -228,6 +284,8 @@ export async function login() {
     });
 
     if (!response.ok) {
+        const refusal = await planRefusal(response);
+        if (refusal) throw refusal;
         throw new Error(`Token exchange failed: ${response.status}`);
     }
 
@@ -271,6 +329,9 @@ async function refreshTokens(creds, retryOnce = true) {
         await secretsSet(JSON.stringify(newCreds));
         return newCreds.access_token;
     }
+
+    const refusal = await planRefusal(response);
+    if (refusal) throw refusal;
 
     if (response.status === 401) {
         throw new Error('Session expired. Please run `betterproposals login` again.');

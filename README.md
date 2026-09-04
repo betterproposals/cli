@@ -253,6 +253,12 @@ Opens a browser window to authenticate with your Better Proposals account. The t
 betterproposals login
 ```
 
+The CLI is available on the **Premium** and **Enterprise** plans; a free trial of either
+qualifies. On any other plan, login is refused with a message pointing to
+<https://betterproposals.io/2/upgrade/>. The same applies to an account that downgrades
+after authenticating — access ends at the next token refresh rather than when the refresh
+token expires.
+
 ---
 
 ### `update`
