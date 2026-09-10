@@ -337,9 +337,20 @@ async function refreshTokens(creds, retryOnce = true) {
         throw new Error('Session expired. Please run `betterproposals login` again.');
     }
 
+    // The endpoint only answers 400 for a missing refresh token and 405 for a
+    // non-POST, neither of which this function can produce on its own: an absent
+    // token is caught by getCredentials() and a bad one comes back 401. So the
+    // request almost certainly reached us altered, which points at the network
+    // in between rather than at the CLI. Throw like every other branch here —
+    // exiting the process would take the MCP server down mid-tool-call and give
+    // the agent nothing to report.
     if (response.status === 400 || response.status === 405) {
-        console.error(`Token refresh failed with status ${response.status}. This is a CLI bug.`);
-        process.exit(1);
+        throw new Error(
+            `Could not refresh your session (the server returned ${response.status}). ` +
+            'Something on the network may have altered the request, such as a VPN, proxy or ' +
+            'company firewall. Try again on a different network, or run `betterproposals login` ' +
+            'to sign in again.'
+        );
     }
 
     if (response.status === 500) {
