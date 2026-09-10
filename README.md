@@ -485,7 +485,7 @@ betterproposals settings get
 Get brand settings.
 
 ```bash
-betterproposals settings brand
+betterproposals settings brands
 ```
 
 ---
