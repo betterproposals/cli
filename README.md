@@ -262,6 +262,21 @@ token expires.
 
 ---
 
+### `logout`
+
+Removes the stored credentials and logs the CLI out.
+
+```bash
+betterproposals logout
+```
+
+Clears the token from the OS keychain (and the `~/.config/betterproposals/credentials.json`
+fallback, where no keychain is available), along with the cached account limits. The MCP server
+reads the same credentials, so this signs out any registered AI agents too. They stay registered,
+but every tool call fails until you run `betterproposals login` again.
+
+---
+
 ### `update`
 
 Check GitHub for a newer release and update the CLI binary (and the companion
