@@ -64,8 +64,8 @@ const BLOCKED_HTML = `<!DOCTYPE html>
 
 const UPGRADE_URL = 'https://betterproposals.io/2/upgrade/';
 
-// The CLI is a Premium / Enterprise feature (a trial is a trial of one of those,
-// so it qualifies). The server decides — this is only the copy for the refusal it
+// The CLI is a Premium / Enterprise feature (Trials of these are excluded for now).
+// The server decides — this is only the copy for the refusal it
 // sends back, keyed on `plan_not_supported`.
 // Kept in step with CLI_PLAN_* in the web app's 2/cli/_access.php.
 const PLAN_MESSAGE = `CLI access isn't available on your current plan. Visit ${UPGRADE_URL} to upgrade.`;
