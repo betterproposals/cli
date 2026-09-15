@@ -19,7 +19,7 @@ const typeSchema = z.number().int().optional().describe(
 const pagination = { page: pageSchema, per_page: perPageSchema };
 const paginationWithType = { ...pagination, type: typeSchema };
 
-export const TOOLS = [
+const ALL_TOOLS = [
     {
         name: 'documents_list',
         description: 'List all documents',
@@ -160,6 +160,105 @@ export const TOOLS = [
             }),
     },
     {
+        name: 'documents_block_content',
+        description: 'Add a content block (HTML, one or two columns) to a document, like the editor does. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
+            content: z.string().optional().describe('HTML content of the block, e.g. "<h2>Title</h2><p>Text</p>" (default: "<p>Start writing</p>")'),
+            colour: z.string().optional().describe('Background colour hex without # (default: F5F5F5)'),
+            text_colour: z.string().optional().describe('Text colour hex without # (default: 333333)'),
+            wide: z.boolean().optional().describe('Wide block (default: false)'),
+        },
+        handler: ({ id, section, position, content, colour, text_colour, wide }) =>
+            documents.block('content', { id, section, position, Content: content, Colour: colour, TextColour: text_colour, Wide: wide }),
+    },
+    {
+        name: 'documents_block_image',
+        description: 'Add a full width image block to a document, like the editor does. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
+            image_src: z.string().optional().describe('URL of the image'),
+            alt_text: z.string().optional().describe('Alternative text of the image'),
+        },
+        handler: ({ id, section, position, image_src, alt_text }) =>
+            documents.block('image', { id, section, position, ImageSrc: image_src, AltText: alt_text }),
+    },
+    {
+        name: 'documents_block_video',
+        description: 'Add a video block to a document, like the editor does. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
+            video_type: z.enum(['youtube', 'vimeo', 'wistia', 'upload']).optional().describe('Video provider'),
+            video_src: z.string().optional().describe('URL of the video'),
+            layout: z.number().int().min(0).max(2).optional().describe('0 normal, 1 wide, 2 full width (default: 0)'),
+            bg_colour: z.string().optional().describe('Background colour hex without #'),
+        },
+        handler: ({ id, section, position, video_type, video_src, layout, bg_colour }) =>
+            documents.block('video', { id, section, position, VideoType: video_type, VideoSrc: video_src, Layout: layout, BGColour: bg_colour }),
+    },
+    {
+        name: 'documents_block_pricing',
+        description: 'Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it: same tool for adding and updating pricing tables and line items. Tables and items without an ID are created; with an ID (returned by this tool and by documents_get PriceTables) they are updated, or deleted with "Delete": true. Changing UnitCost or Quantity of an item recalculates its total, changing Cost recalculates its unit cost. Quote totals are recalculated. Returns the resulting PriceTables with IDs.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Used only when the block is added: existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Used only when the block is added: position of the block in the section, starting from 1. Omit to append it at the end'),
+            title: z.string().optional().describe('Title of the pricing block'),
+            tables: z.string().optional().describe(
+                'Pricing tables as JSON array. New table: {"Title":"Services","Items":[{"Label":"Website design","Description":"...","UnitCost":1000,"Quantity":1,"RecurringType":"one-off|monthly|quarterly|annual","Optional":false}]}. ' +
+                'Edit existing table/items: {"ID":444,"Title":"New title","Items":[{"ID":555,"UnitCost":1200},{"ID":556,"Delete":true},{"Label":"New item","UnitCost":300}]}. Delete a table: {"ID":444,"Delete":true}'
+            ),
+        },
+        handler: ({ id, section, position, title, tables }) =>
+            documents.block('pricing', { id, section, position, Title: title, Tables: tables }),
+    },
+    {
+        name: 'documents_block_acceptance',
+        description: 'Add the acceptance (signing) block to a document, like the editor does. A document can have only one acceptance block. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
+            sign_type: z.number().int().min(0).max(1).optional().describe('0 signature, 1 acceptance button (default: 0)'),
+            button_text: z.string().optional().describe('Text of the button'),
+            signature_statement: z.string().optional().describe('Statement shown next to the signature'),
+            options: z.string().optional().describe('Options the client can choose from, as JSON array of strings'),
+        },
+        handler: ({ id, section, position, sign_type, button_text, signature_statement, options }) =>
+            documents.block('acceptance', { id, section, position, SignType: sign_type, ButtonText: button_text, SignatureStatement: signature_statement, Options: options }),
+    },
+    {
+        name: 'documents_block_library',
+        description: 'Add a Content Library element to a document, like the editor does. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
+            library_element_id: z.number().int().positive().describe('Content Library element ID'),
+            library_element_type: z.enum(['customblock', 'text', 'video', 'bigphoto']).describe('Content Library element type'),
+        },
+        handler: ({ id, section, position, library_element_id, library_element_type }) =>
+            documents.block('library', { id, section, position, LibraryElementID: library_element_id, LibraryElementType: library_element_type }),
+    },
+    {
+        name: 'documents_links',
+        description: 'Generate the personal link of every recipient of a document WITHOUT sending any email, so the user can deliver the links. Recipients are saved as document contacts; recipients that already signed cannot be removed or modified. If recipients is omitted, the links are generated for the existing contacts. Counts as a send towards the monthly sending limit of the plan and follows the same rules as the send page. Always show the user the preview link and let them check the document before generating the links.',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            recipients: z.string().optional().describe('Recipients as JSON array (max 25), e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","RequiredToSign":true}]. Omit to use the existing contacts.'),
+            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear (default: false)'),
+            password: z.string().optional().describe('Password protection for the document'),
+        },
+        handler: ({ id, recipients, sign_order, password }) =>
+            documents.links({ id, recipients, signOrder: sign_order, password }),
+    },
+    {
         name: 'documents_create_cover',
         description: 'Create a document cover',
         inputSchema: {
@@ -284,5 +383,21 @@ export const TOOLS = [
         handler: () => cliStatus(),
     },
 ];
+
+// Tools of the endpoints switched off in the API (API_DISABLED_ENDPOINTS in the
+// API repo .env): kept here so they can be released one at a time by removing
+// them from this list. The full documents_populate and documents_send tools
+// will replace the single block and links tools once fully unlocked.
+export const DISABLED_TOOLS = [
+    'documents_populate',
+    'documents_send',
+    'documents_block_content',
+    'documents_block_image',
+    'documents_block_video',
+    'documents_block_acceptance',
+    'documents_block_library',
+];
+
+export const TOOLS = ALL_TOOLS.filter((t) => !DISABLED_TOOLS.includes(t.name));
 
 export const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));

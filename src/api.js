@@ -230,4 +230,29 @@ export const documents = {
             },
         });
     },
+
+    // Single block versions of populate(): one block of one type per request,
+    // released one type at a time (see DISABLED_TOOLS in tools.js)
+    block(type, { id, section, position, ...fields } = {}) {
+        return request('POST', `/proposal/block/${type}`, {
+            body: {
+                ID: id,
+                Section: section,
+                Position: position,
+                ...fields,
+            },
+        });
+    },
+
+    // Link generation only version of send()
+    links({ id, recipients, signOrder, password } = {}) {
+        return request('POST', '/proposal/links', {
+            body: {
+                ID: id,
+                Recipients: recipients,
+                SignOrder: signOrder,
+                Password: password,
+            },
+        });
+    },
 };
