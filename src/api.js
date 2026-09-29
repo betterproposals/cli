@@ -24,7 +24,9 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
 
         const form = new URLSearchParams();
         for (const [key, value] of Object.entries(body)) {
-            if (value !== undefined) form.set(key, value);
+            // A form sends false as "false", that PHP reads as true: send 1/0
+            if (typeof value === 'boolean') form.set(key, value ? '1' : '0');
+            else if (value !== undefined) form.set(key, value);
         }
         options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
         options.body = form.toString();
