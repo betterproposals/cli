@@ -2,6 +2,7 @@ import open from 'open';
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { clearLimitsCache } from './limits.js';
 
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
@@ -61,6 +62,36 @@ const BLOCKED_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const UPGRADE_URL = 'https://betterproposals.io/2/upgrade/';
+
+// The CLI is a Premium / Enterprise feature (Trials of these are excluded for now).
+// The server decides — this is only the copy for the refusal it
+// sends back, keyed on `plan_not_supported`.
+// Kept in step with CLI_PLAN_* in the web app's 2/cli/_access.php.
+const PLAN_MESSAGE = `CLI access isn't available on your current plan. Visit ${UPGRADE_URL} to upgrade.`;
+
+const PLAN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+<title>Upgrade required - Better Proposals</title>
+<link rel="preconnect" href="https://use.typekit.net">
+<link rel="stylesheet" href="https://use.typekit.net/uci0kgk.css">
+</head>
+<body style="margin:0; padding:0; background:#fafafa; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif;">
+
+<div style="display:flex; flex-direction: column; gap: 2rem; align-items:center; margin: 4rem auto; box-sizing:border-box; max-width: 75%">
+    <div style="margin-bottom:32px;">
+        <img src="https://betterproposals.io/2/img/logos/bp-logo-dark.svg" alt="Better Proposals" style="width:180px;" />
+    </div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:2rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:-1rem;">CLI access isn't available on your plan</div>
+    <div style="font-family: 'neue-haas-grotesk-display', -apple-system, system-ui, BlinkMacSystemFont, Helvetica, Lato, 'Lucida Grande', sans-serif; color:#5C5C5C; font-size:1rem; font-weight:500; letter-spacing: 0.03rem; line-height:1.3; margin-bottom:0;">The Better Proposals CLI is available on the Premium and Enterprise plans. <a href="${UPGRADE_URL}" style="color:#5C5C5C;">Upgrade to get access.</a></div>
+</div>
+
+</body>
+</html>`;
+
 // Page shown in the browser when the user clicks Cancel on the BP login
 // screen. Mirrors the success page.
 const CANCELLED_HTML = `<!DOCTYPE html>
@@ -84,6 +115,24 @@ const CANCELLED_HTML = `<!DOCTYPE html>
 
 </body>
 </html>`;
+
+/**
+ * A plan refusal from /cli/token or /cli/refresh, or null if that isn't what
+ * this response is.
+ *
+ * Both endpoints answer 403 {"error":"plan_not_supported"} when the account's
+ * plan no longer includes the CLI. Without this the caller only sees a bare
+ * status code, which tells the user nothing about how to fix it.
+ */
+async function planRefusal(response) {
+    if (response.status !== 403) return null;
+    try {
+        const data = await response.json();
+        return data?.error === 'plan_not_supported' ? new Error(PLAN_MESSAGE) : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Browser-based login handshake.
@@ -163,6 +212,14 @@ export async function login() {
                 });
             }
 
+            if (errorParam === 'plan_not_supported') {
+                reject(new Error(PLAN_MESSAGE));
+                return new Response(PLAN_HTML, {
+                    status: 403,
+                    headers: {'Content-Type': 'text/html', 'Connection': 'close'},
+                });
+            }
+
             if (!code) {
                 reject(new Error('Missing code in callback'));
                 return new Response('Missing code.', {status: 400});
@@ -227,6 +284,8 @@ export async function login() {
     });
 
     if (!response.ok) {
+        const refusal = await planRefusal(response);
+        if (refusal) throw refusal;
         throw new Error(`Token exchange failed: ${response.status}`);
     }
 
@@ -239,6 +298,9 @@ export async function login() {
         access_token:  data.access_token,
         refresh_token: data.refresh_token,
     }));
+    // Parameter limits vary by account, so anything cached belongs to whoever
+    // was logged in before.
+    clearLimitsCache();
     console.log('Login successful!');
 }
 
@@ -268,13 +330,27 @@ async function refreshTokens(creds, retryOnce = true) {
         return newCreds.access_token;
     }
 
+    const refusal = await planRefusal(response);
+    if (refusal) throw refusal;
+
     if (response.status === 401) {
         throw new Error('Session expired. Please run `betterproposals login` again.');
     }
 
+    // The endpoint only answers 400 for a missing refresh token and 405 for a
+    // non-POST, neither of which this function can produce on its own: an absent
+    // token is caught by getCredentials() and a bad one comes back 401. So the
+    // request almost certainly reached us altered, which points at the network
+    // in between rather than at the CLI. Throw like every other branch here —
+    // exiting the process would take the MCP server down mid-tool-call and give
+    // the agent nothing to report.
     if (response.status === 400 || response.status === 405) {
-        console.error(`Token refresh failed with status ${response.status}. This is a CLI bug.`);
-        process.exit(1);
+        throw new Error(
+            `Could not refresh your session (the server returned ${response.status}). ` +
+            'Something on the network may have altered the request, such as a VPN, proxy or ' +
+            'company firewall. Try again on a different network, or run `betterproposals login` ' +
+            'to sign in again.'
+        );
     }
 
     if (response.status === 500) {
@@ -288,8 +364,19 @@ async function refreshTokens(creds, retryOnce = true) {
 // Server-side override: when a caller (e.g. the PHP web agent) passes a
 // --token value, we skip local keychain/file lookup entirely.
 let overrideToken = null;
+const limitsResetHooks = [];
+
+// api.js registers here rather than being imported: auth.js sits below api.js
+// in the dependency order and importing upward would create a cycle.
+export function onIdentityChange(fn) {
+    limitsResetHooks.push(fn);
+}
+
 export function setOverrideToken(token) {
     overrideToken = token || null;
+    // A different token may mean a different account, and the parameter limit
+    // is per-account.
+    for (const fn of limitsResetHooks) fn();
 }
 
 export async function getAccessToken() {
@@ -312,5 +399,6 @@ export async function refreshAccessToken() {
 
 export async function logout() {
     await secretsDelete();
+    clearLimitsCache();
     console.log('Logged out.');
 }

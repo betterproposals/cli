@@ -253,6 +253,28 @@ Opens a browser window to authenticate with your Better Proposals account. The t
 betterproposals login
 ```
 
+The CLI is available on the **Premium** and **Enterprise** plans. Free trials of those
+plans are not included for now. On any other plan, login is refused with a message
+pointing to
+<https://betterproposals.io/2/upgrade/>. The same applies to an account that downgrades
+after authenticating — access ends at the next token refresh rather than when the refresh
+token expires.
+
+---
+
+### `logout`
+
+Removes the stored credentials and logs the CLI out.
+
+```bash
+betterproposals logout
+```
+
+Clears the token from the OS keychain (and the `~/.config/betterproposals/credentials.json`
+fallback, where no keychain is available), along with the cached account limits. The MCP server
+reads the same credentials, so this signs out any registered AI agents too. They stay registered,
+but every tool call fails until you run `betterproposals login` again.
+
 ---
 
 ### `update`
@@ -478,7 +500,7 @@ betterproposals settings get
 Get brand settings.
 
 ```bash
-betterproposals settings brand
+betterproposals settings brands
 ```
 
 ---
