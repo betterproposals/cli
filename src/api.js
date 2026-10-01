@@ -1,7 +1,76 @@
 import { getAccessToken, refreshAccessToken, onIdentityChange } from './auth.js';
-import { assertParamLengths, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
+import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
 
 const BASE_URL = 'https://api.betterproposals.io';
+
+function encodeForm(body) {
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(body)) {
+        // A form sends false as "false", that PHP reads as true: send 1/0
+        if (typeof value === 'boolean') form.set(key, value ? '1' : '0');
+        else if (value !== undefined) form.set(key, value);
+    }
+    return form.toString();
+}
+
+/**
+ * Split pricing tables in the requests needed to stay within the API limits:
+ * max tables and max line items per request, max request size. A table with
+ * too many items is split in parts: the first one creates (or edits) the
+ * table, the next ones add the other items to it in the following requests.
+ *
+ * @returns {Array<Array<{index: number, table: object, continues: boolean}>>}
+ */
+function splitPricingTables(tables, limits) {
+    const maxTables = listMaxItems(limits, 'Tables');
+    const maxItems = listMaxItems(limits, 'Tables.Items');
+    // Leave room for the other parameters of the request
+    const maxBytes = limits.request_max_length > 0 ? Math.floor(limits.request_max_length * 0.9) : Infinity;
+    const size = (value) => byteLength(encodeForm({ Tables: JSON.stringify(value) }));
+
+    const parts = [];
+    tables.forEach((table, index) => {
+        let items = table?.Items;
+        if (typeof items === 'string') {
+            try { items = JSON.parse(items); } catch { /* sent as it is */ }
+        }
+
+        if (!Array.isArray(items) || (items.length <= maxItems && size([table]) <= maxBytes)) {
+            parts.push({ index, table, continues: false });
+            return;
+        }
+
+        let slice = [];
+        const pushSlice = () => {
+            const continues = parts.some((part) => part.index === index);
+            parts.push({ index, table: continues ? { Items: slice } : { ...table, Items: slice }, continues });
+            slice = [];
+        };
+
+        for (const item of items) {
+            if (slice.length > 0 && (slice.length >= maxItems || size([{ ...table, Items: [...slice, item] }]) > maxBytes)) {
+                pushSlice();
+            }
+            slice.push(item);
+        }
+        pushSlice();
+    });
+
+    const requests = [];
+    let current = [];
+    for (const part of parts) {
+        // A table continues in a following request, once its ID is known
+        const tableInCurrent = current.some((p) => p.index === part.index);
+        if (current.length > 0 && (tableInCurrent || current.length >= maxTables || size([...current.map((p) => p.table), part.table]) > maxBytes)) {
+            requests.push(current);
+            current = [];
+        }
+        current.push(part);
+    }
+    if (current.length > 0) requests.push(current);
+
+    return requests;
+}
 
 async function request(method, path, { params = {}, body, skipLimitCheck = false } = {}, retry = true) {
     const token = await getAccessToken();
@@ -17,19 +86,17 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
     };
 
     if (body) {
-        // Single choke point for every write in the CLI: check the per-parameter
-        // byte budget here rather than in each handler, so current and future
+        // Single choke point for every write in the CLI: check the length
+        // budget here rather than in each handler, so current and future
         // write tools are covered without repeating themselves.
-        if (!skipLimitCheck) assertParamLengths(body, await getLimits());
+        const limits = skipLimitCheck ? null : await getLimits();
+        if (limits) assertParamLengths(body, limits);
 
-        const form = new URLSearchParams();
-        for (const [key, value] of Object.entries(body)) {
-            // A form sends false as "false", that PHP reads as true: send 1/0
-            if (typeof value === 'boolean') form.set(key, value ? '1' : '0');
-            else if (value !== undefined) form.set(key, value);
-        }
+        const form = encodeForm(body);
+        if (limits) assertRequestLength(form, limits);
+
         options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        options.body = form.toString();
+        options.body = form;
     }
 
     const response = await fetch(url.toString(), options);
@@ -298,6 +365,53 @@ export const documents = {
                 ...fields,
             },
         });
+    },
+
+    // Pricing block, split in more requests when the tables or the line items
+    // are more than the API accepts in a single request: the endpoint adds or
+    // edits, so the following requests fill in the tables created by the
+    // previous ones (their IDs come back in Block.TableIDs)
+    async pricingBlock({ id, section, position, title, tables } = {}) {
+        const limits = await getLimits();
+
+        let parsed = tables;
+        if (typeof tables === 'string') {
+            try { parsed = JSON.parse(tables); } catch { parsed = null; }
+        }
+
+        const requests = (isPerValue(limits) && Array.isArray(parsed)) ? splitPricingTables(parsed, limits) : [];
+        if (requests.length <= 1) {
+            return this.block('pricing', { id, section, position, Title: title, Tables: tables });
+        }
+
+        // IDs of the tables, by position in the tables sent
+        const tableIDs = [];
+        let response;
+
+        for (const [n, parts] of requests.entries()) {
+            const body = parts.map((part) => (part.continues ? { ...part.table, ID: tableIDs[part.index] } : part.table));
+
+            try {
+                response = await this.block('pricing', {
+                    id,
+                    ...(n === 0 ? { section, position, Title: title } : {}),
+                    Tables: JSON.stringify(body),
+                });
+            } catch (error) {
+                throw new Error(
+                    `${error.message} (request ${n + 1} of ${requests.length}: the previous requests were saved, ` +
+                    `table IDs by position: ${JSON.stringify(tableIDs)})`
+                );
+            }
+
+            const savedIDs = response.data?.Block?.TableIDs ?? [];
+            parts.forEach((part, i) => {
+                if (!part.continues) tableIDs[part.index] = savedIDs[i] ?? part.table.ID;
+            });
+        }
+
+        response.data.Requests = requests.length;
+        return response;
     },
 
     // Link generation only version of send()

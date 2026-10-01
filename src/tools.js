@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { companies, currencies, documents, documentTypes, getLimits, settings, templates } from './api.js';
-import { getCachedLimits } from './limits.js';
+import { getCachedLimits, jsonLimitNote, valueLimitNote } from './limits.js';
 import { cliStatus } from './update.js';
 
 // Single source of truth for the tools exposed both via MCP (`src/mcp.js`)
@@ -25,13 +25,11 @@ const paginationWithType = { ...pagination, type: typeSchema };
 // carry it as advisory description text rather than a zod .max() — a static cap
 // baked in at module load would be wrong for allow-listed accounts. The real
 // enforcement happens in api.js against the live value.
-const MAX_BYTES = getCachedLimits().parameter_max_length;
-const LIMIT_NOTE = ` Max ${MAX_BYTES} bytes (call api_limits to confirm this account's exact budget).`;
+const LIMIT_NOTE = valueLimitNote(getCachedLimits());
 
-// The JSON-string fields are the real hazard: the whole serialised array counts
-// as ONE parameter, so every entry shares a single budget.
-const JSON_LIMIT_NOTE = ` The entire JSON string counts as a single parameter against the ` +
-    `${MAX_BYTES}-byte limit — all entries share that one budget, so keep values short or send fewer at a time.`;
+// How the JSON-string fields are measured depends on the API version: value by
+// value (per_value) or as ONE parameter sharing a single budget (per_parameter).
+const JSON_LIMIT_NOTE = jsonLimitNote(getCachedLimits());
 
 const ALL_TOOLS = [
     {
@@ -123,7 +121,7 @@ const ALL_TOOLS = [
             tax_amount: z.string().optional().describe('Tax amount'),
             description: z.string().optional().describe('Document description'),
             contacts: z.string().optional().describe('Contacts as JSON array, replaces the existing ones, e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","Signature":true}]'),
-            merge_tags: z.string().optional().describe('Merge tags as JSON array, e.g. [{"tag":"my_tag","value":"My Value"}]'),
+            merge_tags: z.string().optional().describe('Merge tags as JSON array, e.g. [{"tag":"my_tag","value":"My Value"}]' + JSON_LIMIT_NOTE),
         },
         handler: ({ id, company, cover, document_type, brand, currency, tax, tax_label, tax_amount, description, contacts, merge_tags }) =>
             documents.edit({
@@ -218,7 +216,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_block_pricing',
-        description: 'Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it: same tool for adding and updating pricing tables and line items. Tables and items without an ID are created; with an ID (returned by this tool and by documents_get PriceTables) they are updated, or deleted with "Delete": true. Changing UnitCost or Quantity of an item recalculates its total, changing Cost recalculates its unit cost. Quote totals are recalculated. Returns the resulting PriceTables with IDs.',
+        description: 'Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it: same tool for adding and updating pricing tables and line items. Tables and items without an ID are created; with an ID (returned by this tool and by documents_get PriceTables) they are updated, or deleted with "Delete": true. Changing UnitCost or Quantity of an item recalculates its total, changing Cost recalculates its unit cost. Quote totals are recalculated. When the tables or line items are more than the API accepts in a single request they are sent automatically with more requests. Returns the resulting PriceTables with IDs.',
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             section: z.union([z.number().int().positive(), z.string()]).optional().describe('Used only when the block is added: existing section ID or name of a new section. Omit for a new untitled section'),
@@ -226,11 +224,11 @@ const ALL_TOOLS = [
             title: z.string().optional().describe('Title of the pricing block'),
             tables: z.string().optional().describe(
                 'Pricing tables as JSON array. New table: {"Title":"Services","Items":[{"Label":"Website design","Description":"...","UnitCost":1000,"Quantity":1,"RecurringType":"one-off|monthly|quarterly|annual","Optional":false}]}. ' +
-                'Edit existing table/items: {"ID":444,"Title":"New title","Items":[{"ID":555,"UnitCost":1200},{"ID":556,"Delete":true},{"Label":"New item","UnitCost":300}]}. Delete a table: {"ID":444,"Delete":true}'
+                'Edit existing table/items: {"ID":444,"Title":"New title","Items":[{"ID":555,"UnitCost":1200},{"ID":556,"Delete":true},{"Label":"New item","UnitCost":300}]}. Delete a table: {"ID":444,"Delete":true}.' + JSON_LIMIT_NOTE
             ),
         },
         handler: ({ id, section, position, title, tables }) =>
-            documents.block('pricing', { id, section, position, Title: title, Tables: tables }),
+            documents.pricingBlock({ id, section, position, title, tables }),
     },
     {
         name: 'documents_block_acceptance',
@@ -393,10 +391,12 @@ const ALL_TOOLS = [
     {
         name: 'api_limits',
         description:
-            'Report the maximum size allowed for a single parameter when creating or updating data. ' +
+            'Report the maximum size allowed for the values sent when creating or updating data. ' +
             'The limit varies by account, so call this before writing long content — merge tag values, ' +
-            'cover headlines, contact lists — to check the budget you actually have. ' +
-            'The cap applies per parameter (not per request) and is measured in UTF-8 bytes.',
+            'cover headlines, contact lists, pricing items — to check the budget you actually have. ' +
+            'With scope per_value every single value is capped (in characters), field_max_length lists the fields ' +
+            'allowed more, list_max_items the max entries of the lists per request and request_max_length the max ' +
+            'bytes of a request; with scope per_parameter every parameter is capped as a whole, in UTF-8 bytes.',
         inputSchema: {},
         handler: () => getLimits(),
     },
