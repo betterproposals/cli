@@ -3,13 +3,28 @@ import { join } from 'path';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import { execSync } from 'child_process';
 
-export const TARGETS = ['claude-desktop', 'claude-code', 'cursor', 'gemini'];
+export const TARGETS = ['claude-desktop', 'claude-code', 'cursor', 'antigravity', 'gemini'];
 
 const RESTART_HINTS = {
     'claude-desktop': 'Restart Claude Desktop for changes to take effect.',
     'claude-code': 'Reload Claude Code for changes to take effect.',
     'cursor': 'Restart Cursor for changes to take effect.',
+    'antigravity': 'Restart Antigravity for changes to take effect.',
     'gemini': 'Restart Gemini for changes to take effect.',
+};
+
+// Agents whose CLI manages its own MCP config, so we shell out instead of
+// writing JSON. Claude Code silently ignores entries written to settings.json.
+// `add` is followed by the server command; `agy` has no scope flag.
+const CLI_TARGETS = {
+    'claude-code': { bin: 'claude', add: 'mcp add -s user betterproposals', remove: 'mcp remove betterproposals -s user' },
+    'antigravity': { bin: 'agy', add: 'mcp add betterproposals', remove: 'mcp remove betterproposals' },
+    'gemini': {
+        bin: 'gemini',
+        add: 'mcp add -s user betterproposals',
+        remove: 'mcp remove betterproposals',
+        deprecated: 'Gemini CLI was retired for personal Google accounts on 2026-06-18. Use the `antigravity` target instead.',
+    },
 };
 
 function configPath(target) {
@@ -72,7 +87,7 @@ function resolveMcpBinary() {
 
 function quoteArg(arg) {
     // Wrap in double quotes if the path contains whitespace, so the shell
-    // passes it as a single arg to `claude mcp add` / `gemini mcp add`.
+    // passes it as a single arg to `claude mcp add` / `agy mcp add`.
     return /\s/.test(arg) ? `"${arg}"` : arg;
 }
 
@@ -83,37 +98,16 @@ function validateTarget(target) {
     }
 }
 
-function installClaudeCode(command) {
-    // Claude Code CLI manages its own MCP config via `claude mcp add/remove`.
-    // Writing to settings.json directly is silently ignored by the CLI.
-    try {
-        execSync(`claude mcp add -s user betterproposals ${quoteArg(command)}`, { stdio: 'inherit' });
-    } catch {
-        throw new Error('Failed to register MCP server. Is the `claude` CLI installed and on PATH?');
-    }
-}
+function runAgentCli(target, action, command) {
+    const { bin, add, remove, deprecated } = CLI_TARGETS[target];
+    if (deprecated) console.warn(`Warning: ${deprecated}`);
 
-function uninstallClaudeCode() {
+    const line = action === 'add' ? `${bin} ${add} ${quoteArg(command)}` : `${bin} ${remove}`;
     try {
-        execSync('claude mcp remove betterproposals -s user', { stdio: 'inherit' });
+        execSync(line, { stdio: 'inherit' });
     } catch {
-        throw new Error('Failed to remove MCP server. Is the `claude` CLI installed and on PATH?');
-    }
-}
-
-function installGemini(command) {
-    try {
-        execSync(`gemini mcp add -s user betterproposals ${quoteArg(command)}`, { stdio: 'inherit' });
-    } catch {
-        throw new Error('Failed to register MCP server. Is the `gemini` CLI installed and on PATH?');
-    }
-}
-
-function uninstallGemini() {
-    try {
-        execSync('gemini mcp remove betterproposals', { stdio: 'inherit' });
-    } catch {
-        throw new Error('Failed to remove MCP server. Is the `gemini` CLI installed and on PATH?');
+        const verb = action === 'add' ? 'register' : 'remove';
+        throw new Error(`Failed to ${verb} MCP server. Is the \`${bin}\` CLI installed and on PATH?`);
     }
 }
 
@@ -121,15 +115,9 @@ export function install(target) {
     validateTarget(target);
     const command = resolveMcpBinary();
 
-    if (target === 'claude-code') {
-        installClaudeCode(command);
-        console.log(RESTART_HINTS['claude-code']);
-        return;
-    }
-
-    if (target === 'gemini') {
-        installGemini(command);
-        console.log(RESTART_HINTS['gemini']);
+    if (CLI_TARGETS[target]) {
+        runAgentCli(target, 'add', command);
+        console.log(RESTART_HINTS[target]);
         return;
     }
 
@@ -151,13 +139,8 @@ export function install(target) {
 export function uninstall(target) {
     validateTarget(target);
 
-    if (target === 'claude-code') {
-        uninstallClaudeCode();
-        return;
-    }
-
-    if (target === 'gemini') {
-        uninstallGemini();
+    if (CLI_TARGETS[target]) {
+        runAgentCli(target, 'remove');
         return;
     }
 
