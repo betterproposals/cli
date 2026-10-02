@@ -41,7 +41,7 @@ bun src/index.js <command>
 
 ## MCP (AI Agent Integration)
 
-The CLI includes an MCP server that exposes all Better Proposals functionality as tools to AI agents (Claude, Gemini, Cursor, etc.).
+The CLI includes an MCP server that exposes all Better Proposals functionality as tools to AI agents (Claude, Antigravity, Cursor, etc.).
 
 ### Setup
 
@@ -55,8 +55,10 @@ betterproposals login
 betterproposals mcp install claude-code
 betterproposals mcp install claude-desktop
 betterproposals mcp install cursor
-betterproposals mcp install gemini
+betterproposals mcp install antigravity
 ```
+
+The `gemini` target still works for enterprise and API-key users of the old Gemini CLI, but it is deprecated: Google retired Gemini CLI for personal accounts in favour of Antigravity CLI (`agy`).
 
 3. Restart your agent app. It will now have access to all Better Proposals tools.
 
