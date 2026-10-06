@@ -159,8 +159,8 @@ const ALL_TOOLS = [
             subject: z.string().optional().describe('Email subject line. Supports merge tags like {{company_name}} and {{first_name}}. Omit to use the subject saved on the document or the brand default'),
             message: z.string().optional().describe('Personal message included in the email. Supports merge tags. Omit to use the message saved on the document or the brand default'),
             recipients: z.string().optional().describe('Recipients as JSON array (max 25), e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","RequiredToSign":true}]. Omit to send to the existing contacts.'),
-            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear (default: false)'),
-            password: z.string().optional().describe('Password protection for the document'),
+            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear. Omit to keep the sign order saved on the document'),
+            password: z.string().optional().describe('Password protection for the document. Omit to keep the password saved on the document, send an empty string to remove it'),
             just_link_generation: z.boolean().optional().describe('When true, only generates the personal links without sending emails (default: false)'),
         },
         handler: ({ id, subject, message, recipients, sign_order, password, just_link_generation }) =>
@@ -264,8 +264,8 @@ const ALL_TOOLS = [
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             recipients: z.string().optional().describe('Recipients as JSON array (max 25), e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","RequiredToSign":true}]. Omit to use the existing contacts.'),
-            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear (default: false)'),
-            password: z.string().optional().describe('Password protection for the document'),
+            sign_order: z.boolean().optional().describe('When true, recipients must sign in the order they appear. Omit to keep the sign order saved on the document'),
+            password: z.string().optional().describe('Password protection for the document. Omit to keep the password saved on the document, send an empty string to remove it'),
         },
         handler: ({ id, recipients, sign_order, password }) =>
             documents.links({ id, recipients, signOrder: sign_order, password }),
