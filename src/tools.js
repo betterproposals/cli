@@ -70,7 +70,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_get',
-        description: 'Get a single document by ID',
+        description: 'Get a single document by ID, with the link to open it in the editor of the app (Editor)',
         inputSchema: { id: z.number().int().positive().describe('Document ID') },
         handler: ({ id }) => documents.get(id),
     },
@@ -82,7 +82,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_create',
-        description: 'Create a new document',
+        description: 'Create a new document. The response contains the link to open it in the editor of the app (Editor): always give it to the user, so they can check and edit the document before sending it',
         inputSchema: {
             company: z.string().describe('Company ID or name. Creates a new company if the name is not found.'),
             cover: z.number().int().optional().describe('Cover ID'),
@@ -108,7 +108,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_edit',
-        description: 'Edit an existing document. Only the provided fields are changed. When contacts are provided they replace the existing ones; contacts that already signed are never removed or modified.',
+        description: 'Edit an existing document. Only the provided fields are changed. When contacts are provided they replace the existing ones; contacts that already signed are never removed or modified. The response contains the link to open the document in the editor of the app (Editor).',
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             company: z.string().optional().describe('Company ID or name. Creates a new company if the name is not found.'),
@@ -216,7 +216,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_block_pricing',
-        description: 'Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it: same tool for adding and updating pricing tables and line items. Tables and items without an ID are created; with an ID (returned by this tool and by documents_get PriceTables) they are updated, or deleted with "Delete": true. Changing UnitCost or Quantity of an item recalculates its total, changing Cost recalculates its unit cost. Quote totals are recalculated. When the tables or line items are more than the API accepts in a single request they are sent automatically with more requests. Returns the resulting PriceTables with IDs.',
+        description: 'Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it: same tool for adding and updating pricing tables and line items. Tables and items without an ID are created; with an ID (returned by this tool and by documents_get PriceTables) they are updated, or deleted with "Delete": true. Changing UnitCost or Quantity of an item recalculates its total, changing Cost recalculates its unit cost. Quote totals are recalculated. When the tables or line items are more than the API accepts in a single request they are sent automatically with more requests. Returns the resulting PriceTables with IDs and the link to open the document in the editor of the app (Editor).',
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             section: z.union([z.number().int().positive(), z.string()]).optional().describe('Used only when the block is added: existing section ID or name of a new section. Omit for a new untitled section'),
@@ -260,7 +260,7 @@ const ALL_TOOLS = [
     },
     {
         name: 'documents_links',
-        description: 'Generate the personal link of every recipient of a document WITHOUT sending any email, so the user can deliver the links. Recipients are saved as document contacts; recipients that already signed cannot be removed or modified. If recipients is omitted, the links are generated for the existing contacts. Counts as a send towards the monthly sending limit of the plan and follows the same rules as the send page. Always show the user the preview link and let them check the document before generating the links.',
+        description: 'Generate the personal link of every recipient of a document WITHOUT sending any email, so the user can deliver the links. Recipients are saved as document contacts; recipients that already signed cannot be removed or modified. If recipients is omitted, the links are generated for the existing contacts. Counts as a send towards the monthly sending limit of the plan and follows the same rules as the send page. Always give the user the editor link (Editor, returned when the document is created, edited or read) and let them check the document before generating the links.',
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             recipients: z.string().optional().describe('Recipients as JSON array (max 25), e.g. [{"FirstName":"Jane","Surname":"Doe","Email":"jane@example.com","RequiredToSign":true}]. Omit to use the existing contacts.'),
