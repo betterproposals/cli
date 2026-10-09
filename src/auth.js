@@ -8,24 +8,34 @@ const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
 const CRED_FILE = join(homedir(), '.config', 'betterproposals', 'credentials.json');
 
+const CRED_DIR = join(homedir(), '.config', 'betterproposals');
+
+// The keychain can accept a write yet never hand it back (locked or denied
+// keychain, sandboxed or non-interactive process), so only trust it once the
+// value reads back. Otherwise login reports success and every later command
+// finds nothing.
 async function secretsSet(value) {
     try {
         await Bun.secrets.set({ service: SERVICE, name: NAME, value });
-    } catch {
-        await mkdir(join(homedir(), '.config', 'betterproposals'), { recursive: true });
-        await writeFile(CRED_FILE, value, { mode: 0o600 });
-    }
+        if (await Bun.secrets.get({ service: SERVICE, name: NAME }) === value) {
+            // A file left by an earlier fallback would hold rotated-out tokens.
+            try { await unlink(CRED_FILE); } catch { /* doesn't exist */ }
+            return;
+        }
+    } catch { /* fall through to the file */ }
+    await mkdir(CRED_DIR, { recursive: true });
+    await writeFile(CRED_FILE, value, { mode: 0o600 });
 }
 
 async function secretsGet() {
     try {
-        return await Bun.secrets.get({ service: SERVICE, name: NAME }) ?? null;
+        const value = await Bun.secrets.get({ service: SERVICE, name: NAME });
+        if (value) return value;
+    } catch { /* fall through to the file */ }
+    try {
+        return await readFile(CRED_FILE, 'utf8');
     } catch {
-        try {
-            return await readFile(CRED_FILE, 'utf8');
-        } catch {
-            return null;
-        }
+        return null;
     }
 }
 
