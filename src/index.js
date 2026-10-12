@@ -290,6 +290,123 @@ documentsCmd
         }
     });
 
+// "true"/"false" from the command line to a boolean, sent as 1/0 to the API
+const toBool = (value) => ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+
+documentsCmd
+    .command('edit <id>')
+    .description('Edit an existing document, only the provided fields are changed')
+    .option('-c, --company <value>', 'Company ID or name (creates new if name not found)')
+    .option('--cover <id>', 'Cover ID')
+    .option('--document-type <value>', 'Document type ID or name')
+    .option('--brand <id>', 'Brand ID')
+    .option('--currency <code>', 'Currency (3-letter code, e.g. USD)')
+    .option('--tax <value>', 'Enable tax')
+    .option('--tax-label <label>', 'Tax label')
+    .option('--tax-amount <amount>', 'Tax amount')
+    .option('--description <text>', 'Document description')
+    .option('--contacts <json>', 'Contacts as JSON array, replaces the existing ones, e.g. \'[{"FirstName":"Jane","Email":"jane@example.com"}]\'')
+    .option('--merge-tags <json>', 'Merge tags as JSON array, e.g. \'[{"tag":"my_tag","value":"My Value"}]\'')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.edit({
+                id: Number(id),
+                company: opts.company,
+                cover: opts.cover,
+                documentType: opts.documentType,
+                brand: opts.brand,
+                currency: opts.currency,
+                tax: opts.tax,
+                taxLabel: opts.taxLabel,
+                taxAmount: opts.taxAmount,
+                description: opts.description,
+                contacts: opts.contacts,
+                mergeTags: opts.mergeTags,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('edit-cover <id>')
+    .description('Edit a document cover, only the provided fields are changed')
+    .option('--brand-id <id>', 'Brand ID')
+    .option('--cover-name <name>', 'Cover name')
+    .option('--bg-colour <hex>', 'Background colour')
+    .option('--headline <text>', 'Headline text')
+    .option('--subheader <text>', 'Subheader text')
+    .option('--text-colour <hex>', 'Text colour')
+    .option('--text-align <align>', 'Text alignment')
+    .option('--button-style <style>', 'Button style')
+    .option('--button-text <text>', 'Button text')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.editCover({
+                id: Number(id),
+                brandId: opts.brandId,
+                coverName: opts.coverName,
+                bgColour: opts.bgColour,
+                headline: opts.headline,
+                subheader: opts.subheader,
+                textColour: opts.textColour,
+                textAlign: opts.textAlign,
+                buttonStyle: opts.buttonStyle,
+                buttonText: opts.buttonText,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('pricing <id>')
+    .description('Add the pricing block to a document or edit it when the document already has one')
+    .option('--section <value>', 'When the block is added: existing section ID or name of a new section')
+    .option('--position <number>', 'When the block is added: position of the block in the section, starting from 1')
+    .option('--title <text>', 'Title of the pricing block')
+    .option('--tables <json>', 'Pricing tables as JSON array, e.g. \'[{"Title":"Services","Items":[{"Label":"Website design","UnitCost":1000,"Quantity":1}]}]\'')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.pricingBlock({
+                id: Number(id),
+                section: opts.section !== undefined && /^\d+$/.test(opts.section) ? Number(opts.section) : opts.section,
+                position: opts.position !== undefined ? Number(opts.position) : undefined,
+                title: opts.title,
+                tables: opts.tables,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('links <id>')
+    .description('Generate the personal link of every recipient of a document without sending any email')
+    .option('--recipients <json>', 'Recipients as JSON array, e.g. \'[{"FirstName":"Jane","Email":"jane@example.com","RequiredToSign":true}]\' (default: the existing contacts)')
+    .option('--sign-order <true|false>', 'Recipients must sign in the order they appear (default: the sign order saved on the document)')
+    .option('--password <password>', 'Password protection for the document, empty to remove it (default: the password saved on the document)')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.links({
+                id: Number(id),
+                recipients: opts.recipients,
+                signOrder: opts.signOrder !== undefined ? toBool(opts.signOrder) : undefined,
+                password: opts.password,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
 const settingsCmd = program
     .command('settings')
     .description('Manage settings');

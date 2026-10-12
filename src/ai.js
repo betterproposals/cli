@@ -151,7 +151,8 @@ const TOOL_PROJECTIONS = {
     documents_list_sent:   DOCUMENT_FIELDS,
     documents_list_signed: DOCUMENT_FIELDS,
     documents_list_paid:   DOCUMENT_FIELDS,
-    documents_get:         DOCUMENT_FIELDS,
+    // Keep the editor link, so the agent can give it to the user
+    documents_get:         [...DOCUMENT_FIELDS, 'Editor'],
 
     templates_list:        ['ID', 'TemplateName', 'TypeID', 'DateCreated', 'DateEdited', 'QuoteAmount', 'MonthlyAmount', 'QuarterlyAmount', 'AnnualAmount', 'Default'],
     companies_list:        ['ID', 'CompanyName', 'DateCreated', 'DateEdited'],

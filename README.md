@@ -487,6 +487,85 @@ betterproposals documents create-cover [options]
 
 ---
 
+### `documents edit <id>`
+
+Edit an existing document. Only the provided fields are changed.
+
+```bash
+betterproposals documents edit <id> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-c, --company <value>` | Company ID or name. If a name is given and not found, a new company is created. |
+| `--cover <id>` | Cover ID |
+| `--document-type <value>` | Document type ID or name |
+| `--brand <id>` | Brand ID |
+| `--currency <code>` | Currency as 3-letter code, e.g. `USD` |
+| `--tax <value>` | Enable tax |
+| `--tax-label <label>` | Tax label |
+| `--tax-amount <amount>` | Tax amount |
+| `--description <text>` | Document description |
+| `--contacts <json>` | Contacts as JSON array, they replace the existing ones (contacts that already signed are never removed or modified), e.g. `[{"FirstName":"Jane","Email":"jane@example.com"}]` |
+| `--merge-tags <json>` | Merge tags as JSON array, e.g. `[{"tag":"my_tag","value":"My Value"}]` |
+
+---
+
+### `documents edit-cover <id>`
+
+Edit a document cover. Only the provided fields are changed.
+
+```bash
+betterproposals documents edit-cover <id> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--brand-id <id>` | Brand ID |
+| `--cover-name <name>` | Cover name |
+| `--bg-colour <hex>` | Background colour |
+| `--headline <text>` | Headline text |
+| `--subheader <text>` | Subheader text |
+| `--text-colour <hex>` | Text colour |
+| `--text-align <align>` | Text alignment |
+| `--button-style <style>` | Button style |
+| `--button-text <text>` | Button text |
+
+---
+
+### `documents pricing <id>`
+
+Add the pricing block to a document or, when the document already has one (e.g. created from a template), edit it. Tables and items without an `ID` are created, with an `ID` they are updated, or deleted with `"Delete": true`. Quote totals are recalculated. When the tables or line items are more than the API accepts in a single request, they are sent automatically with more requests. Returns the resulting pricing tables with their IDs.
+
+```bash
+betterproposals documents pricing <id> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--section <value>` | Used only when the block is added: existing section ID or name of a new section. Omit for a new untitled section |
+| `--position <number>` | Used only when the block is added: position of the block in the section, starting from 1. Omit to append it at the end |
+| `--title <text>` | Title of the pricing block |
+| `--tables <json>` | Pricing tables as JSON array, e.g. `[{"Title":"Services","Items":[{"Label":"Website design","UnitCost":1000,"Quantity":1,"RecurringType":"one-off"}]}]`. Edit: `[{"ID":444,"Items":[{"ID":555,"UnitCost":1200},{"ID":556,"Delete":true}]}]` |
+
+---
+
+### `documents links <id>`
+
+Generate the personal link of every recipient of a document **without sending any email**, so you can deliver the links yourself. Recipients are saved as document contacts; recipients that already signed cannot be removed or modified. Counts as a send towards the monthly sending limit of the plan and follows the same rules as the send page.
+
+```bash
+betterproposals documents links <id> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--recipients <json>` | Recipients as JSON array (max 25), e.g. `[{"FirstName":"Jane","Email":"jane@example.com","RequiredToSign":true}]` | the existing contacts |
+| `--sign-order <true\|false>` | Recipients must sign in the order they appear | the sign order saved on the document |
+| `--password <password>` | Password protection for the document, empty to remove it | the password saved on the document |
+
+---
+
 ### `settings get`
 
 Get account settings.
