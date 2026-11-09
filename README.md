@@ -783,12 +783,13 @@ betterproposals library all [options]
 | `--type <type>` | Only items of this type: `customblock`, `text`, `video`, `bigphoto`, `section` or `pricing_table` | all the types |
 | `--search <text>` | Only items whose name contains this text | |
 | `--folder <id>` | Only items in this Content Library folder | |
+| `--prebuilt` | List the prebuilt blocks and sections of Better Proposals (the Prebuilt panels of the editor) instead of your Content Library. They are added to documents with the same commands | |
 
 ---
 
 ### `library get <type> <id>`
 
-Get a Content Library item with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table.
+Get a Content Library item (also a prebuilt block or section) with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table.
 
 ```bash
 betterproposals library get <type> <id>

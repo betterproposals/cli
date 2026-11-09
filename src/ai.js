@@ -161,7 +161,7 @@ const TOOL_PROJECTIONS = {
     // for instruction markup.
     document_types_list:   ['ID', 'TypeName', 'TypeNameSingular', 'TypeColour', 'NumberOfOutstandingDocuments', 'NumberOfTemplates'],
     settings_merge_tags:   ['ID', 'Name', 'Tag', 'Fallback', 'Archived'],
-    library_list:          ['ID', 'Type', 'Name', 'FolderName', 'Preview', 'DateEdited'],
+    library_list:          ['ID', 'Type', 'Name', 'Prebuilt', 'Category', 'FolderName', 'Preview', 'DateEdited'],
     // Singletons — `data` is an object, not an array. Same projection
     // mechanism still applies via the `else if` branch in reduceToolResult.
     settings_get:          ['CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'TimeZone', 'DateEdited', 'CustomerJourneysActive', 'CustomerJourneysDefault'],

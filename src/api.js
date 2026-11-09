@@ -242,8 +242,9 @@ export const templates = {
 // documents.block('library'), documents.librarySection() and
 // documents.libraryPricingTable()
 export const library = {
-    list({ page = 1, perPage = 10, type, search, folder } = {}) {
-        return request('GET', '/library', { params: { page, per_page: perPage, type, search, folder } });
+    // prebuilt: the prebuilt blocks and sections of Better Proposals instead of the account library
+    list({ page = 1, perPage = 10, type, search, folder, prebuilt } = {}) {
+        return request('GET', '/library', { params: { page, per_page: perPage, type, search, folder, prebuilt: prebuilt ? 1 : undefined } });
     },
 
     get(type, id) {

@@ -485,6 +485,7 @@ libraryCmd
     .option('--type <type>', 'Only items of this type: customblock, text, video, bigphoto, section or pricing_table')
     .option('--search <text>', 'Only items whose name contains this text')
     .option('--folder <id>', 'Only items in this Content Library folder')
+    .option('--prebuilt', 'List the prebuilt blocks and sections of Better Proposals instead of your Content Library')
     .action(async (opts) => {
         try {
             const data = await library.list({
@@ -493,6 +494,7 @@ libraryCmd
                 type: opts.type,
                 search: opts.search,
                 folder: opts.folder !== undefined ? Number(opts.folder) : undefined,
+                prebuilt: opts.prebuilt,
             });
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {

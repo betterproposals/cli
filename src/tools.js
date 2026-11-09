@@ -247,18 +247,19 @@ const ALL_TOOLS = [
     },
     {
         name: 'library_list',
-        description: 'List the items of the user\'s Content Library, newest first: blocks saved from their documents and templates (type customblock content block, text, video, bigphoto full width image), whole sections (section) and pricing tables (pricing_table). Each item has its ID, Type, Name, folder and a short Preview of its content. Use it to find the content the user already wrote and reuse it in documents with documents_block_library, documents_section_library and documents_pricing_table_library, instead of writing new content.',
+        description: 'List the items of the user\'s Content Library, newest first: blocks saved from their documents and templates (type customblock content block, text, video, bigphoto full width image), whole sections (section) and pricing tables (pricing_table). Each item has its ID, Type, Name, folder and a short Preview of its content. With prebuilt it lists the ready-made prebuilt blocks and sections instead. Use it to find the content the user already wrote and reuse it in documents with documents_block_library, documents_section_library and documents_pricing_table_library, instead of writing new content.',
         inputSchema: {
             ...pagination,
             type: z.enum(['customblock', 'text', 'video', 'bigphoto', 'section', 'pricing_table']).optional().describe('Only items of this type. Omit for all the types'),
             search: z.string().optional().describe('Only items whose name contains this text (for sections also the section name)'),
             folder: z.number().int().positive().optional().describe('Only items in this Content Library folder ID (FolderID of the items)'),
+            prebuilt: z.boolean().optional().describe('When true, list the prebuilt blocks and sections of Better Proposals (ready-made designs of the Prebuilt panels of the editor, by Category) instead of the user\'s Content Library. They are added to documents with the same tools. Search also matches their category; folder cannot be used'),
         },
-        handler: ({ page, per_page, type, search, folder }) => library.list({ page, perPage: per_page, type, search, folder }),
+        handler: ({ page, per_page, type, search, folder, prebuilt }) => library.list({ page, perPage: per_page, type, search, folder, prebuilt }),
     },
     {
         name: 'library_get',
-        description: 'Get a Content Library item with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table. Use it to check an item before adding it to a document.',
+        description: 'Get a Content Library item (also a prebuilt block or section) with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table. Use it to check an item before adding it to a document.',
         inputSchema: {
             type: z.enum(['customblock', 'text', 'video', 'bigphoto', 'section', 'pricing_table']).describe('Type of the item, as returned by library_list'),
             id: z.number().int().positive().describe('ID of the item, as returned by library_list'),
