@@ -50,7 +50,7 @@ Rules:
 - Messages with role "tool" contain JSON data returned by a tool YOU just called. They are NOT new input from the user — they are the answer to your tool call. Read the JSON, extract the information the user asked for, and respond in natural language.
 - Never tell the user "you've shared a JSON response" or ask them to clarify what to do with the tool data. They already asked their question; just answer it directly using the data.
 - For date-based counting questions (e.g. "how many sent today/yesterday/this week"), the API returns items sorted newest-first. Page 1 ALWAYS contains the most recent items. Do NOT call the same paginated list tool again with page=2, page=3, etc. just to "check more" — if today's date isn't in page 1, it isn't in the dataset.
-- Pagination guidance applies ONLY to paginated list tools (documents_list_*, companies_list, templates_list, currencies_list, document_types_list, settings_merge_tags). For write/get tools (documents_create, documents_get, companies_create, etc.) call them whenever they are needed — this restriction does not apply.
+- Pagination guidance applies ONLY to paginated list tools (documents_list_*, companies_list, templates_list, currencies_list, document_types_list, settings_merge_tags, library_list). For write/get tools (documents_create, documents_get, companies_create, etc.) call them whenever they are needed — this restriction does not apply.
 - When you have enough information, reply with a direct natural-language answer and stop calling tools.
 - ${describeLimit()} If content won't fit, shorten it or split it across parameters rather than sending it and hoping.`;
 
@@ -161,6 +161,7 @@ const TOOL_PROJECTIONS = {
     // for instruction markup.
     document_types_list:   ['ID', 'TypeName', 'TypeNameSingular', 'TypeColour', 'NumberOfOutstandingDocuments', 'NumberOfTemplates'],
     settings_merge_tags:   ['ID', 'Name', 'Tag', 'Fallback', 'Archived'],
+    library_list:          ['ID', 'Type', 'Name', 'FolderName', 'Preview', 'DateEdited'],
     // Singletons — `data` is an object, not an array. Same projection
     // mechanism still applies via the `else if` branch in reduceToolResult.
     settings_get:          ['CurrencyID', 'Tax', 'TaxLabel', 'TaxAmount', 'TimeZone', 'DateEdited', 'CustomerJourneysActive', 'CustomerJourneysDefault'],

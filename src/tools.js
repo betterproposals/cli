@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { companies, currencies, documents, documentTypes, getLimits, settings, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, getLimits, library, settings, templates } from './api.js';
 import { getCachedLimits, jsonLimitNote, valueLimitNote } from './limits.js';
 import { cliStatus } from './update.js';
 
@@ -246,17 +246,66 @@ const ALL_TOOLS = [
             documents.block('acceptance', { id, section, position, SignType: sign_type, ButtonText: button_text, SignatureStatement: signature_statement, Options: options }),
     },
     {
+        name: 'library_list',
+        description: 'List the items of the user\'s Content Library, newest first: blocks saved from their documents and templates (type customblock content block, text, video, bigphoto full width image), whole sections (section) and pricing tables (pricing_table). Each item has its ID, Type, Name, folder and a short Preview of its content. Use it to find the content the user already wrote and reuse it in documents with documents_block_library, documents_section_library and documents_pricing_table_library, instead of writing new content.',
+        inputSchema: {
+            ...pagination,
+            type: z.enum(['customblock', 'text', 'video', 'bigphoto', 'section', 'pricing_table']).optional().describe('Only items of this type. Omit for all the types'),
+            search: z.string().optional().describe('Only items whose name contains this text (for sections also the section name)'),
+            folder: z.number().int().positive().optional().describe('Only items in this Content Library folder ID (FolderID of the items)'),
+        },
+        handler: ({ page, per_page, type, search, folder }) => library.list({ page, perPage: per_page, type, search, folder }),
+    },
+    {
+        name: 'library_get',
+        description: 'Get a Content Library item with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table. Use it to check an item before adding it to a document.',
+        inputSchema: {
+            type: z.enum(['customblock', 'text', 'video', 'bigphoto', 'section', 'pricing_table']).describe('Type of the item, as returned by library_list'),
+            id: z.number().int().positive().describe('ID of the item, as returned by library_list'),
+        },
+        handler: ({ type, id }) => library.get(type, id),
+    },
+    {
         name: 'documents_block_library',
-        description: 'Add a Content Library element to a document, like the editor does. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position.',
+        description: 'Add a block of the Content Library (an item of type customblock, text, video or bigphoto from library_list) to a document, like the editor does: the block keeps the content and settings saved in the library. The block goes in an existing section (section = section ID), in a new section (section = name) or in a new untitled section, at the end of the section or at the given position. The response contains the link to open the document in the editor of the app (Editor).',
         inputSchema: {
             id: z.number().int().positive().describe('Document ID'),
             section: z.union([z.number().int().positive(), z.string()]).optional().describe('Existing section ID or name of a new section. Omit for a new untitled section'),
             position: z.number().int().positive().optional().describe('Position of the block in the section, starting from 1. Omit to append it at the end'),
-            library_element_id: z.number().int().positive().describe('Content Library element ID'),
-            library_element_type: z.enum(['customblock', 'text', 'video', 'bigphoto']).describe('Content Library element type'),
+            library_element_id: z.number().int().positive().describe('ID of the Content Library block (library_list ID)'),
+            library_element_type: z.enum(['customblock', 'text', 'video', 'bigphoto']).describe('Type of the Content Library block (library_list Type)'),
         },
         handler: ({ id, section, position, library_element_id, library_element_type }) =>
             documents.block('library', { id, section, position, LibraryElementID: library_element_id, LibraryElementType: library_element_type }),
+    },
+    {
+        name: 'documents_section_library',
+        description: 'Add a section of the Content Library (an item of type section from library_list) to a document, like the editor does: a new section after the existing ones, with the name and all the blocks of the library section. The response contains the new section ID (PageID), its blocks and the link to open the document in the editor of the app (Editor).',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            library_section_id: z.number().int().positive().describe('ID of the Content Library section (library_list ID of an item of type section)'),
+        },
+        handler: ({ id, library_section_id }) =>
+            documents.librarySection({ id, librarySectionId: library_section_id }),
+    },
+    {
+        name: 'documents_pricing_table_library',
+        description: 'Add a pricing table of the Content Library (an item of type pricing_table from library_list) to the pricing block of a document, like the editor does: the table is copied with all its line items, then it can be changed with documents_block_pricing using the returned table ID. When the document has no pricing block yet, the block is added with the table in it. Quote totals are recalculated. Returns the resulting PriceTables with IDs and the link to open the document in the editor of the app (Editor).',
+        inputSchema: {
+            id: z.number().int().positive().describe('Document ID'),
+            library_pricing_table_id: z.number().int().positive().describe('ID of the Content Library pricing table (library_list ID of an item of type pricing_table)'),
+            table_position: z.number().int().positive().optional().describe('Position of the table among the tables of the pricing block, starting from 1. Omit to append it after the last table'),
+            section: z.union([z.number().int().positive(), z.string()]).optional().describe('Used only when the document has no pricing block and it is added: existing section ID or name of a new section. Omit for a new untitled section'),
+            position: z.number().int().positive().optional().describe('Used only when the document has no pricing block and it is added: position of the block in the section, starting from 1. Omit to append it at the end'),
+        },
+        handler: ({ id, library_pricing_table_id, table_position, section, position }) =>
+            documents.libraryPricingTable({
+                id,
+                libraryPricingTableId: library_pricing_table_id,
+                tablePosition: table_position,
+                section,
+                position,
+            }),
     },
     {
         name: 'documents_links',
@@ -419,7 +468,6 @@ export const DISABLED_TOOLS = [
     'documents_block_image',
     'documents_block_video',
     'documents_block_acceptance',
-    'documents_block_library',
 ];
 
 export const TOOLS = ALL_TOOLS.filter((t) => !DISABLED_TOOLS.includes(t.name));

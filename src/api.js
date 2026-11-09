@@ -228,6 +228,20 @@ export const templates = {
     },
 };
 
+// Content Library of the account: blocks (customblock, text, video, bigphoto),
+// sections and pricing tables, to be added to documents with
+// documents.block('library'), documents.librarySection() and
+// documents.libraryPricingTable()
+export const library = {
+    list({ page = 1, perPage = 10, type, search, folder } = {}) {
+        return request('GET', '/library', { params: { page, per_page: perPage, type, search, folder } });
+    },
+
+    get(type, id) {
+        return request('GET', `/library/${encodeURIComponent(type)}/${id}`);
+    },
+};
+
 export const documents = {
     list({ page = 1, perPage = 10, type } = {}) {
         return request('GET', '/proposal/', { params: { page, per_page: perPage, type } });
@@ -412,6 +426,30 @@ export const documents = {
 
         response.data.Requests = requests.length;
         return response;
+    },
+
+    // Content Library section, added after the other sections of the document
+    librarySection({ id, librarySectionId } = {}) {
+        return request('POST', '/proposal/section/library', {
+            body: {
+                ID: id,
+                LibrarySectionID: librarySectionId,
+            },
+        });
+    },
+
+    // Content Library pricing table, added to the pricing block of the
+    // document (the block is added when the document doesn't have one)
+    libraryPricingTable({ id, libraryPricingTableId, tablePosition, section, position } = {}) {
+        return request('POST', '/proposal/block/pricing/library', {
+            body: {
+                ID: id,
+                LibraryPricingTableID: libraryPricingTableId,
+                TablePosition: tablePosition,
+                Section: section,
+                Position: position,
+            },
+        });
     },
 
     // Link generation only version of send()

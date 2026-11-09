@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login, logout } from './auth.js';
-import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, library, settings, templates } from './api.js';
 import { install, uninstall, TARGETS } from './mcp-install.js';
 import { runAgent } from './ai.js';
 import { ask } from './ask.js';
@@ -400,6 +400,113 @@ documentsCmd
                 signOrder: opts.signOrder !== undefined ? toBool(opts.signOrder) : undefined,
                 password: opts.password,
             });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+// Section ID when numeric, otherwise the name of a new section
+const toSection = (value) => (value !== undefined && /^\d+$/.test(value) ? Number(value) : value);
+
+documentsCmd
+    .command('library-block <id>')
+    .description('Add a block of the Content Library to a document')
+    .requiredOption('--library-id <id>', 'ID of the Content Library block (see library all)')
+    .requiredOption('--library-type <type>', 'Type of the Content Library block: customblock, text, video or bigphoto')
+    .option('--section <value>', 'Existing section ID or name of a new section (default: a new untitled section)')
+    .option('--position <number>', 'Position of the block in the section, starting from 1 (default: at the end)')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.block('library', {
+                id: Number(id),
+                section: toSection(opts.section),
+                position: opts.position !== undefined ? Number(opts.position) : undefined,
+                LibraryElementID: Number(opts.libraryId),
+                LibraryElementType: opts.libraryType,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('library-section <id>')
+    .description('Add a section of the Content Library to a document, after the existing sections')
+    .requiredOption('--library-id <id>', 'ID of the Content Library section (see library all --type section)')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.librarySection({
+                id: Number(id),
+                librarySectionId: Number(opts.libraryId),
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+documentsCmd
+    .command('library-pricing <id>')
+    .description('Add a pricing table of the Content Library to the pricing block of a document (the block is added when missing)')
+    .requiredOption('--library-id <id>', 'ID of the Content Library pricing table (see library all --type pricing_table)')
+    .option('--table-position <number>', 'Position of the table among the tables of the pricing block, starting from 1 (default: after the last table)')
+    .option('--section <value>', 'When the pricing block is added: existing section ID or name of a new section')
+    .option('--position <number>', 'When the pricing block is added: position of the block in the section, starting from 1')
+    .action(async (id, opts) => {
+        try {
+            const data = await documents.libraryPricingTable({
+                id: Number(id),
+                libraryPricingTableId: Number(opts.libraryId),
+                tablePosition: opts.tablePosition !== undefined ? Number(opts.tablePosition) : undefined,
+                section: toSection(opts.section),
+                position: opts.position !== undefined ? Number(opts.position) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+const libraryCmd = program
+    .command('library')
+    .description('Browse the Content Library');
+
+libraryCmd
+    .command('all')
+    .description('List the Content Library items, newest first')
+    .option('-p, --page <number>', 'Page number', '1')
+    .option('-n, --per-page <number>', 'Results per page', '10')
+    .option('--type <type>', 'Only items of this type: customblock, text, video, bigphoto, section or pricing_table')
+    .option('--search <text>', 'Only items whose name contains this text')
+    .option('--folder <id>', 'Only items in this Content Library folder')
+    .action(async (opts) => {
+        try {
+            const data = await library.list({
+                page: Number(opts.page),
+                perPage: Number(opts.perPage),
+                type: opts.type,
+                search: opts.search,
+                folder: opts.folder !== undefined ? Number(opts.folder) : undefined,
+            });
+            console.log(JSON.stringify(data, null, 2));
+        } catch (err) {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+
+libraryCmd
+    .command('get <type> <id>')
+    .description('Get a Content Library item with its full content (type: customblock, text, video, bigphoto, section or pricing_table)')
+    .action(async (type, id) => {
+        try {
+            const data = await library.get(type, Number(id));
             console.log(JSON.stringify(data, null, 2));
         } catch (err) {
             console.error(err.message);
