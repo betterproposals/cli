@@ -106,13 +106,22 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
         return request(method, path, { params, body, skipLimitCheck }, false);
     }
 
-    if (!response.ok) {
+    // The API answers its errors (validation, limits, not found...) with an
+    // error status code AND a message in the body: read the message so the
+    // user (and the AI) know why the request failed
+    const text = await response.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* not a JSON answer */ }
+
+    if (!response.ok || data?.status === 'error') {
+        if (typeof data?.message === 'string' && data.message !== '') {
+            throw new Error(data.message);
+        }
         throw new Error(`API error ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    if (data.status === 'error') {
-        throw new Error(data.message);
+    if (data === null) {
+        throw new Error(`API error ${response.status}: invalid response`);
     }
 
     return data;
