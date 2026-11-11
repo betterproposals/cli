@@ -1,7 +1,13 @@
 import { getAccessToken, refreshAccessToken, onIdentityChange } from './auth.js';
 import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
 
-const BASE_URL = 'https://api.betterproposals.io';
+// Overridable for the hosted server, which calls the API over the private network.
+const BASE_URL = process.env.BP_API_URL || 'https://api.betterproposals.io';
+
+// Extra request headers from the environment (a JSON object), e.g.
+// {"X-Forwarded-Proto":"https"} when calling the API directly, bypassing the
+// load balancer that normally terminates TLS in front of it.
+const EXTRA_HEADERS = process.env.BP_API_HEADERS ? JSON.parse(process.env.BP_API_HEADERS) : {};
 
 function encodeForm(body) {
     const form = new URLSearchParams();
@@ -82,7 +88,7 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
 
     const options = {
         method,
-        headers: { Bptoken: token },
+        headers: { ...EXTRA_HEADERS, Bptoken: token },
     };
 
     if (body) {
