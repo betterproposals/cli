@@ -6,7 +6,10 @@ import { install, uninstall, TARGETS } from './mcp-install.js';
 import { runAgent } from './ai.js';
 import { ask } from './ask.js';
 import { update, notifyUpdate, refreshUpdateCache } from './update.js';
+import { configureStdioContext } from './bootstrap.js';
 import pkg from '../../package.json';
+
+configureStdioContext();
 
 const program = new Command();
 

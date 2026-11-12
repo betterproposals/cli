@@ -1,7 +1,5 @@
-import { getAccessToken, refreshAccessToken, onIdentityChange } from '../stdio/auth.js';
+import { getContext } from './context.js';
 import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
-
-const BASE_URL = 'https://api.betterproposals.io';
 
 function encodeForm(body) {
     const form = new URLSearchParams();
@@ -73,16 +71,17 @@ function splitPricingTables(tables, limits) {
 }
 
 async function request(method, path, { params = {}, body, skipLimitCheck = false } = {}, retry = true) {
-    const token = await getAccessToken();
+    const context = getContext();
+    const authHeaders = await context.getAuthHeaders();
 
-    const url = new URL(path, BASE_URL);
+    const url = new URL(path, context.baseUrl);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined) url.searchParams.set(key, value);
     }
 
     const options = {
         method,
-        headers: { Bptoken: token },
+        headers: { ...context.headers, ...authHeaders },
     };
 
     if (body) {
@@ -101,8 +100,8 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
 
     const response = await fetch(url.toString(), options);
 
-    if (response.status === 401 && retry) {
-        await refreshAccessToken();
+    if (response.status === 401 && retry && context.refreshAuth) {
+        await context.refreshAuth();
         return request(method, path, { params, body, skipLimitCheck }, false);
     }
 
@@ -156,8 +155,6 @@ export function getLimits() {
 export function resetLimits() {
     limitsPromise = null;
 }
-
-onIdentityChange(resetLimits);
 
 export const settings = {
     get() {

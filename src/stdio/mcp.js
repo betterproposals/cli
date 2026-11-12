@@ -4,7 +4,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from '../core/tools.js';
 import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
 import { describeLimit } from '../core/limits.js';
+import { configureStdioContext } from './bootstrap.js';
 import pkg from '../../package.json';
+
+configureStdioContext();
 
 // Warm the version-check cache in the background (MCP-only users never run the
 // interactive CLI that normally triggers this), then surface any pending update

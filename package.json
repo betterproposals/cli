@@ -7,6 +7,7 @@
     "betterproposals-mcp": "./src/stdio/mcp.js"
   },
   "scripts": {
+    "test": "bun test",
     "build:mac-arm64": "bun build --compile --target=bun-darwin-arm64 src/stdio/index.js --outfile dist/betterproposals-mac-arm64 && bun build --compile --target=bun-darwin-arm64 src/stdio/mcp.js --outfile dist/betterproposals-mcp-mac-arm64",
     "build:mac-x64": "bun build --compile --target=bun-darwin-x64 src/stdio/index.js --outfile dist/betterproposals-mac-x64 && bun build --compile --target=bun-darwin-x64 src/stdio/mcp.js --outfile dist/betterproposals-mcp-mac-x64",
     "build:linux-x64": "bun build --compile --target=bun-linux-x64 src/stdio/index.js --outfile dist/betterproposals-linux-x64 && bun build --compile --target=bun-linux-x64 src/stdio/mcp.js --outfile dist/betterproposals-mcp-linux-x64",
