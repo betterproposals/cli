@@ -268,12 +268,21 @@ describe('hosted MCP server: limits of the account in the descriptions', () => {
 
     test('without the limits of the account, the standard ones are described and the list is still served', async () => {
         globalThis.fetch = async () => new Response('down', { status: 500, statusText: 'Server Error' });
-        const response = await rpc('tools/list', {});
+        const logged = [];
+        const original = console.error;
+        console.error = (...args) => logged.push(args.join(' '));
+        let response;
+        try {
+            response = await rpc('tools/list', {});
+        } finally {
+            console.error = original;
+        }
         const { result } = await response.json();
 
         expect(response.status).toBe(200);
         expect(result.tools).toHaveLength(27);
         expect(descriptions(result)).toContain('Max 1000 bytes');
+        expect(logged).toEqual(['Limits of the account could not be read, describing the standard ones: API error 500: Server Error']);
     });
 
     test('a batch is described too', async () => {

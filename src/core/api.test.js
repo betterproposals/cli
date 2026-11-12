@@ -176,7 +176,9 @@ describe('getLimits', () => {
         const recovered = await runWithContext(context, () => getLimits());
 
         expect([failed.parameter_max_length, failed.source]).toEqual([1000, 'default']);
+        expect(failed.lookup_error).toStartWith('API error 500');
         expect(recovered.parameter_max_length).toBe(7000);
+        expect(recovered.lookup_error).toBeUndefined();
     });
 
     test('a write is checked against the limits of the account before it is sent', async () => {

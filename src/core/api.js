@@ -125,8 +125,10 @@ async function loadLimits() {
     try {
         const response = await settings.limits();
         return { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
-    } catch {
-        return { ...DEFAULT_LIMITS };
+    } catch (error) {
+        // lookup_error: why the standard limit is used, for the logs of a server
+        // and for whoever calls api_limits
+        return { ...DEFAULT_LIMITS, lookup_error: error.message };
     }
 }
 

@@ -66,6 +66,8 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
         if (!calls.some((call) => call?.method === 'initialize' || call?.method === 'tools/list')) return null;
 
         const limits = await getLimits();
+        if (limits.lookup_error) console.error(`Limits of the account could not be read, describing the standard ones: ${limits.lookup_error}`);
+
         return {
             instructions: describeLimit(limits),
             tools: buildTools({ limitNotes: { value: valueLimitNote(limits), json: jsonLimitNote(limits) } }),
