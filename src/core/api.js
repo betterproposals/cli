@@ -1,4 +1,4 @@
-import { getAccessToken, refreshAccessToken, onIdentityChange } from './auth.js';
+import { getAccessToken, refreshAccessToken, onIdentityChange } from '../stdio/auth.js';
 import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
 
 const BASE_URL = 'https://api.betterproposals.io';

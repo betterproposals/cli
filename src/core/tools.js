@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { companies, currencies, documents, documentTypes, getLimits, settings, templates } from './api.js';
 import { getCachedLimits, jsonLimitNote, valueLimitNote } from './limits.js';
-import { cliStatus } from './update.js';
+import { cliStatus } from '../stdio/update.js';
 
 // Single source of truth for the tools exposed both via MCP (`src/mcp.js`)
 // and via the Llama agent loop (`src/ai.js`). Each tool is { name,

@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
 import { tmpdir, homedir } from 'os';
 import { join, dirname } from 'path';
-import { TOOLS, TOOLS_BY_NAME } from './tools.js';
+import { TOOLS, TOOLS_BY_NAME } from '../core/tools.js';
 import { resolveProvider, resolveApiKey, chatWithTools, formatToolResultMessage } from './provider.js';
 import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
-import { describeLimit } from './limits.js';
+import { describeLimit } from '../core/limits.js';
 
 // Agent loop that lets a locally-hosted Llama (or any Ollama-compatible
 // endpoint) drive the Better Proposals tools exposed by `src/tools.js`.

@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { TOOLS } from './tools.js';
+import { TOOLS } from '../core/tools.js';
 import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
-import { describeLimit } from './limits.js';
-import pkg from '../package.json';
+import { describeLimit } from '../core/limits.js';
+import pkg from '../../package.json';
 
 // Warm the version-check cache in the background (MCP-only users never run the
 // interactive CLI that normally triggers this), then surface any pending update

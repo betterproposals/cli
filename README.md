@@ -36,7 +36,7 @@ bun link
 Requires [Bun](https://bun.com) v1.3+.
 
 ```bash
-bun src/index.js <command>
+bun src/stdio/index.js <command>
 ```
 
 ## MCP (AI Agent Integration)
@@ -157,7 +157,7 @@ betterproposals ask "Quante proposte ho inviato oggi?"
 2. **Triage (cosine first pass)** — the English prompt is embedded (`nomic-embed-text` local / `openai/text-embedding-3-small` cloud) and compared against two anchor sets (general help vs MCP-actionable) via cosine similarity. Anchor embeddings are cached per model under `~/.betterproposals/`.
 3. **Intent gate (complementary step)** — cosine can't separate *"how do I create a proposal"* (how-to → general) from *"create a proposal"* (action → MCP); the anchors are lexically near and scores land within a few hundredths. So whenever cosine picks **general**, a fast LLM (`qwen3.5:2b` local / `deepseek/deepseek-v4-flash` cloud) re-checks intent with an **MCP-priority bias** and flips to MCP if the message is really a command or data query. Instructional phrasing ("how do I…", "where do I…") stays general. Recent `--session` turns are fed in so follow-ups like *"yes, set the tax to 21%"* are understood in context and stay on the data path.
 4. **Route**:
-   - **General path** — *no agent LLM*. The English prompt is embedded once more and compared against the ~150 help-center articles (`src/data/help-articles.json`) by cosine similarity; the top-5 candidates are then reranked by a small LLM on OpenRouter (`deepseek/deepseek-v4-flash`, off locally) so questions whose lexical top-1 is wrong still get the best article (e.g. "Indian rupees — how do I set them?" picks "Finance settings" over the cosine winner "Using quantities"). Disable with `--no-reranker`.
+   - **General path** — *no agent LLM*. The English prompt is embedded once more and compared against the ~150 help-center articles (`src/stdio/data/help-articles.json`) by cosine similarity; the top-5 candidates are then reranked by a small LLM on OpenRouter (`deepseek/deepseek-v4-flash`, off locally) so questions whose lexical top-1 is wrong still get the best article (e.g. "Indian rupees — how do I set them?" picks "Finance settings" over the cosine winner "Using quantities"). Disable with `--no-reranker`.
    - **MCP path** — tiered escalation based on prompt complexity (`simple` / `medium` / `complex`). The model behind each tier depends on the provider — see the [OpenRouter table](#openrouter-cloud-mode). Complexity is computed deterministically from prompt length, multi-step conjunctions, aggregation words, comparison words, and time ranges — no LLM call needed to pick the tier. Override with `--mcp-tier` or `--mcp-model`.
 5. **Translate-out** — translates the English response back to the user's language (`hy-chat-translator-out` local / `deepseek/deepseek-v4-flash` cloud). **URLs are masked as `[[URL0]]` placeholders before translation and spliced back afterwards** so help-article links never get mangled (without this, `/en/articles/4984101-using-pricing-tables` would be "translated" into a non-existent `/it/articles/...` URL).
 
@@ -293,7 +293,7 @@ betterproposals update [options]
 | `--check` | Only report whether a newer version exists; don't install |
 | `--force` | Reinstall the latest version even if you're already up to date |
 
-Running from source (`bun src/index.js`) prints a notice instead — use `git pull` /
+Running from source (`bun src/stdio/index.js`) prints a notice instead — use `git pull` /
 `bun install` to update a source checkout.
 
 #### Update notifications

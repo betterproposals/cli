@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'path';
 import { homedir } from 'os';
 import { chmodSync, renameSync, writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, accessSync, constants } from 'fs';
 import { execSync, spawn } from 'child_process';
-import pkg from '../package.json';
+import pkg from '../../package.json';
 
 const VERSION = pkg.version;
 
@@ -136,7 +136,7 @@ function resolveOnPath(name) {
 }
 
 export async function update({ check = false, force = false } = {}) {
-    // Running from source (`bun src/index.js`) or an unstamped build: execPath is
+    // Running from source (`bun src/stdio/index.js`) or an unstamped build: execPath is
     // the bun runtime, not an installed CLI binary. Don't try to overwrite it.
     const isInstalledBinary = basename(process.execPath).startsWith('betterproposals');
     if (VERSION === '0.0.1' || !isInstalledBinary) {
