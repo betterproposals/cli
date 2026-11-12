@@ -1,7 +1,5 @@
-import { getAccessToken, refreshAccessToken, onIdentityChange } from './auth.js';
-import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
-
-const BASE_URL = 'https://api.betterproposals.io';
+import { getContext } from './context.js';
+import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, DEFAULT_LIMITS } from './limits.js';
 
 function encodeForm(body) {
     const form = new URLSearchParams();
@@ -73,16 +71,17 @@ function splitPricingTables(tables, limits) {
 }
 
 async function request(method, path, { params = {}, body, skipLimitCheck = false } = {}, retry = true) {
-    const token = await getAccessToken();
+    const context = getContext();
+    const authHeaders = await context.getAuthHeaders();
 
-    const url = new URL(path, BASE_URL);
+    const url = new URL(path, context.baseUrl);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined) url.searchParams.set(key, value);
     }
 
     const options = {
         method,
-        headers: { Bptoken: token },
+        headers: { ...context.headers, ...authHeaders },
     };
 
     if (body) {
@@ -101,8 +100,8 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
 
     const response = await fetch(url.toString(), options);
 
-    if (response.status === 401 && retry) {
-        await refreshAccessToken();
+    if (response.status === 401 && retry && context.refreshAuth) {
+        await context.refreshAuth();
         return request(method, path, { params, body, skipLimitCheck }, false);
     }
 
@@ -118,46 +117,34 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
     return data;
 }
 
-// Memoised for the life of the process. The authoritative value comes from a
-// live call rather than the disk cache, because the limit is per-account and a
-// single process may be driving a different account than the last one did
-// (setOverrideToken, or a re-login). The disk cache is a warm start for the
-// advisory prose in limits.js, not the basis for rejecting a request.
-let limitsPromise = null;
+// Never throws and never blocks a real operation: an API too old to serve
+// /settings/limits, a network failure, or an expired session all fall back to
+// the conservative default. Being wrong here costs an extra round trip and a
+// server-side 400; throwing here would break every write.
+async function loadLimits() {
+    try {
+        const response = await settings.limits();
+        return { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
+    } catch (error) {
+        // lookup_error: why the standard limit is used, for the logs of a server
+        // and for whoever calls api_limits
+        return { ...DEFAULT_LIMITS, lookup_error: error.message };
+    }
+}
 
 /**
  * The parameter limits in force for the authenticated account.
  *
- * Never throws and never blocks a real operation: an API too old to serve
- * /settings/limits, a network failure, or an expired session all fall back to
- * the conservative default. Being wrong here costs an extra round trip and a
- * server-side 400; throwing here would break every write.
+ * What is remembered, and for how long, is up to the limits store of the
+ * context (the stdio CLI keeps it for the process and warms it from disk, the
+ * hosted server keeps it per account for a few minutes). Without a store the
+ * limits are looked up on every call.
  */
 export function getLimits() {
-    if (limitsPromise) return limitsPromise;
+    const { limitsStore } = getContext();
 
-    limitsPromise = (async () => {
-        try {
-            const response = await settings.limits();
-            const limits = { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
-            writeLimitsCache(limits);
-            return limits;
-        } catch {
-            return readLimitsCache() ?? { ...DEFAULT_LIMITS };
-        }
-    })();
-
-    return limitsPromise;
+    return limitsStore ? limitsStore.resolve(loadLimits) : loadLimits();
 }
-
-// The override token swaps the acting account mid-process (the PHP web agent
-// passes one per invocation), which invalidates anything we resolved for the
-// previous one.
-export function resetLimits() {
-    limitsPromise = null;
-}
-
-onIdentityChange(resetLimits);
 
 export const settings = {
     get() {

@@ -1,19 +1,13 @@
-import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
-
 // The API rejects any single POST value over a per-account budget, lists over
 // a max number of entries and requests over a max size (see the Flight::before
 // hook in the API's public/index.php). Agents have no
 // way to guess that budget, so the API exposes it at GET /settings/limits and
-// this module caches, describes, and enforces it client-side.
+// this module describes and enforces it client-side.
 //
-// Pure cache + measurement logic only — the HTTP call lives in api.js, which
-// owns auth and retries. Keeping the dependency one-way (api.js → limits.js)
-// avoids an import cycle.
-
-const CACHE_PATH = join(homedir(), '.betterproposals', 'limits.json');
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Pure measurement and wording logic only — the HTTP call lives in api.js,
+// which owns auth and retries, and remembering the value is up to the limits
+// store of the running context. Keeping the dependency one-way
+// (api.js → limits.js) avoids an import cycle.
 
 // Conservative fallback: the standard limit every account gets. Used whenever
 // the API can't tell us better (older deploy without the endpoint, no network,
@@ -64,7 +58,7 @@ export function byteLength(value) {
     return Buffer.byteLength(String(value), 'utf8');
 }
 
-function normalize(data) {
+export function normalize(data) {
     if (!data || typeof data !== 'object') return { ...DEFAULT_LIMITS };
     const max = Number(data.parameter_max_length);
     return {
@@ -72,38 +66,6 @@ function normalize(data) {
         ...data,
         parameter_max_length: Number.isFinite(max) && max > 0 ? max : DEFAULT_PARAMETER_MAX_LENGTH,
     };
-}
-
-export function readLimitsCache() {
-    try {
-        const cache = JSON.parse(readFileSync(CACHE_PATH, 'utf8'));
-        if (Date.now() - (cache.checkedAt || 0) > CACHE_TTL_MS) return null;
-        return normalize(cache.limits);
-    } catch {
-        return null;
-    }
-}
-
-export function writeLimitsCache(limits) {
-    try {
-        mkdirSync(dirname(CACHE_PATH), { recursive: true });
-        writeFileSync(CACHE_PATH, JSON.stringify({ checkedAt: Date.now(), limits }) + '\n', 'utf8');
-    } catch {
-        /* caching is an optimisation; never fail a real operation over it */
-    }
-}
-
-// The limit is per-account, so a cache left behind by a previous login would
-// report the wrong number. Called from auth.js on login and logout.
-export function clearLimitsCache() {
-    try { unlinkSync(CACHE_PATH); } catch { /* nothing cached */ }
-}
-
-// Synchronous, cache-only view for the places that can't await: the MCP server
-// `instructions` string and the static tool descriptions, both built at module
-// load. Advisory prose only — never the basis for rejecting a request.
-export function getCachedLimits() {
-    return readLimitsCache() ?? { ...DEFAULT_LIMITS };
 }
 
 // The API checks every single value (scope per_value): JSON parameters like
@@ -132,7 +94,7 @@ export function listMaxItems(limits, path) {
 // One sentence, shared by the MCP instructions, the agent system prompt, and
 // the write tools' field descriptions, so the number is stated identically
 // everywhere it appears.
-export function describeLimit(limits = getCachedLimits()) {
+export function describeLimit(limits = DEFAULT_LIMITS) {
     const max = limits.parameter_max_length;
     const hedge = limits.source === 'default'
         ? ' (the standard limit; call the api_limits tool to confirm this account\'s exact budget)'
@@ -150,13 +112,13 @@ export function describeLimit(limits = getCachedLimits()) {
 }
 
 // Short notes appended to the write tools' field descriptions.
-export function valueLimitNote(limits = getCachedLimits()) {
+export function valueLimitNote(limits = DEFAULT_LIMITS) {
     return isPerValue(limits)
         ? ` Max ${limits.parameter_max_length} characters (call api_limits to confirm this account's exact budget).`
         : ` Max ${limits.parameter_max_length} bytes (call api_limits to confirm this account's exact budget).`;
 }
 
-export function jsonLimitNote(limits = getCachedLimits()) {
+export function jsonLimitNote(limits = DEFAULT_LIMITS) {
     return isPerValue(limits)
         ? ` Every value inside the JSON is limited on its own (max ${limits.parameter_max_length} characters, ` +
             'some fields allow more) and lists have a max number of entries: call api_limits for the details.'

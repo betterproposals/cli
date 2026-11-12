@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { login, logout } from './auth.js';
-import { companies, currencies, documents, documentTypes, settings, templates } from './api.js';
+import { companies, currencies, documents, documentTypes, settings, templates } from '../core/api.js';
 import { install, uninstall, TARGETS } from './mcp-install.js';
 import { runAgent } from './ai.js';
 import { ask } from './ask.js';
 import { update, notifyUpdate, refreshUpdateCache } from './update.js';
-import pkg from '../package.json';
+import { configureStdioContext } from './bootstrap.js';
+import pkg from '../../package.json';
+
+configureStdioContext();
 
 const program = new Command();
 

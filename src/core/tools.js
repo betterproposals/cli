@@ -1,21 +1,31 @@
 import { z } from 'zod';
 import { companies, currencies, documents, documentTypes, getLimits, settings, templates } from './api.js';
-import { getCachedLimits, jsonLimitNote, valueLimitNote } from './limits.js';
-import { cliStatus } from './update.js';
+import { jsonLimitNote, valueLimitNote } from './limits.js';
 
-// Single source of truth for the tools exposed both via MCP (`src/mcp.js`)
-// and via the Llama agent loop (`src/ai.js`). Each tool is { name,
-// description, inputSchema (zod raw shape), handler }. Handlers throw on
+// Single source of truth for the tools exposed by the stdio MCP server
+// (`src/stdio/mcp.js`), the hosted MCP server (`src/http/server.js`) and the
+// Llama agent loop (`src/stdio/ai.js`). Each tool is { name, description,
+// inputSchema (zod raw shape), annotations, handler }. Handlers throw on
 // failure; consumers wrap errors in their protocol's error shape.
 
 const pageSchema = z.number().int().positive().optional().default(1).describe('Page number');
-const perPageSchema = z.number().int().positive().optional().default(10).describe('Results per page');
+const perPageSchema = z.number().int().positive().max(50).optional().default(10).describe('Results per page (maximum 50)');
 const typeSchema = z.number().int().optional().describe(
     'Document type filter ID. ' +
     'Built-in types: 1=Proposals, 2=Quotes, 3=Brochures, 4=Statements of Work, ' +
     '5=Contracts, 6=Sign offs, 7=Job Offers. ' +
     'Users may also have custom types — use the document_types_list tool to discover them.'
 );
+
+// The list endpoints attach the pricing tables to every document, which makes an
+// answer many times larger. Lists leave them out, documents_get has them.
+export function withoutPriceTables(answer) {
+    if (!Array.isArray(answer?.data)) return answer;
+    return { ...answer, data: answer.data.map(({ PriceTables, ...document }) => document) };
+}
+
+const listHandler = (method) => async ({ page, per_page, type }) =>
+    withoutPriceTables(await documents[method]({ page, perPage: per_page, type }));
 
 const pagination = { page: pageSchema, per_page: perPageSchema };
 const paginationWithType = { ...pagination, type: typeSchema };
@@ -25,48 +35,46 @@ const paginationWithType = { ...pagination, type: typeSchema };
 // carry it as advisory description text rather than a zod .max() — a static cap
 // baked in at module load would be wrong for allow-listed accounts. The real
 // enforcement happens in api.js against the live value.
-const LIMIT_NOTE = valueLimitNote(getCachedLimits());
-
-// How the JSON-string fields are measured depends on the API version: value by
+//
+// LIMIT_NOTE is that text for a single value. JSON_LIMIT_NOTE is the one for
+// the JSON-string fields, whose measure depends on the API version: value by
 // value (per_value) or as ONE parameter sharing a single budget (per_parameter).
-const JSON_LIMIT_NOTE = jsonLimitNote(getCachedLimits());
-
-const ALL_TOOLS = [
+const toolDefinitions = ({ LIMIT_NOTE, JSON_LIMIT_NOTE }) => [
     {
         name: 'documents_list',
         description: 'List all documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.list({ page, perPage: per_page, type }),
+        handler: listHandler('list'),
     },
     {
         name: 'documents_list_new',
         description: 'List new documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listNew({ page, perPage: per_page, type }),
+        handler: listHandler('listNew'),
     },
     {
         name: 'documents_list_opened',
         description: 'List opened documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listOpened({ page, perPage: per_page, type }),
+        handler: listHandler('listOpened'),
     },
     {
         name: 'documents_list_sent',
         description: 'List sent documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listSent({ page, perPage: per_page, type }),
+        handler: listHandler('listSent'),
     },
     {
         name: 'documents_list_signed',
         description: 'List signed documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listSigned({ page, perPage: per_page, type }),
+        handler: listHandler('listSigned'),
     },
     {
         name: 'documents_list_paid',
         description: 'List paid documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listPaid({ page, perPage: per_page, type }),
+        handler: listHandler('listPaid'),
     },
     {
         name: 'documents_get',
@@ -400,12 +408,6 @@ const ALL_TOOLS = [
         inputSchema: {},
         handler: () => getLimits(),
     },
-    {
-        name: 'cli_status',
-        description: 'Report the Better Proposals CLI version and whether a newer release is available. Use when the user asks what version they are on, whether the CLI is up to date, or how to update.',
-        inputSchema: {},
-        handler: () => cliStatus(),
-    },
 ];
 
 // Tools of the endpoints switched off in the API (API_DISABLED_ENDPOINTS in the
@@ -422,6 +424,63 @@ export const DISABLED_TOOLS = [
     'documents_block_library',
 ];
 
-export const TOOLS = ALL_TOOLS.filter((t) => !DISABLED_TOOLS.includes(t.name));
+// Every tool is either read-only or a write tool, and has to be listed here: a
+// tool nobody classified would otherwise be presented to the AI client with the
+// wrong promise, so buildTools() refuses it. A write tool is destructive when it
+// can overwrite or remove what is already there, not when it only adds. None of
+// them reaches outside the Better Proposals API.
+const READ_TOOLS = new Set([
+    'documents_list', 'documents_list_new', 'documents_list_opened', 'documents_list_sent',
+    'documents_list_signed', 'documents_list_paid', 'documents_get', 'documents_count',
+    'settings_get', 'settings_brand', 'settings_merge_tags',
+    'currencies_list', 'currencies_get',
+    'companies_list', 'companies_get',
+    'document_types_list',
+    'templates_list', 'templates_get',
+    'api_limits',
+]);
 
-export const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+const WRITE_TOOLS = {
+    companies_create: { destructive: false },
+    document_types_create: { destructive: false },
+    documents_create: { destructive: false },
+    documents_create_cover: { destructive: false },
+    documents_edit: { destructive: true },
+    documents_edit_cover: { destructive: true },
+    documents_block_pricing: { destructive: true },
+    documents_links: { destructive: true },
+};
+
+export function annotationsFor(name) {
+    if (READ_TOOLS.has(name)) return { readOnlyHint: true, openWorldHint: false };
+
+    const write = WRITE_TOOLS[name];
+    if (!write) throw new Error(`Tool ${name} is not classified: add it to READ_TOOLS or WRITE_TOOLS in tools.js.`);
+
+    return { readOnlyHint: false, destructiveHint: write.destructive, idempotentHint: false, openWorldHint: false };
+}
+
+/**
+ * The tools of the Better Proposals API.
+ *
+ * @param {{limitNotes?: {value?: string, json?: string}, disabled?: string[]}} [options]
+ *   limitNotes: the notes about the size limits appended to the descriptions of
+ *   the write tools. Without them the notes describe the standard limit; the
+ *   stdio server passes the ones of the account that is logged in.
+ *   disabled: names of tools to leave out (the hosted server's MCP_DISABLED_TOOLS);
+ *   a name that is not a tool throws, so a typo cannot silently leave one on.
+ */
+export function buildTools({ limitNotes = {}, disabled = [] } = {}) {
+    const notes = {
+        LIMIT_NOTE: limitNotes.value ?? valueLimitNote(),
+        JSON_LIMIT_NOTE: limitNotes.json ?? jsonLimitNote(),
+    };
+
+    const definitions = toolDefinitions(notes).filter((tool) => !DISABLED_TOOLS.includes(tool.name));
+    const unknown = disabled.filter((name) => !definitions.some((tool) => tool.name === name));
+    if (unknown.length) throw new Error(`Unknown tool name(s) to disable: ${unknown.join(', ')}.`);
+
+    return definitions
+        .filter((tool) => !disabled.includes(tool.name))
+        .map((tool) => ({ ...tool, annotations: annotationsFor(tool.name) }));
+}
