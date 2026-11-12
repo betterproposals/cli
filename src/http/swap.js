@@ -40,6 +40,7 @@ export function accountIdFromInternalToken(token) {
 export function createSwapClient({
     swapUrl,
     secret,
+    headers = {},
     fetchImpl = fetch,
     now = Date.now,
     marginMs = DEFAULT_MARGIN_MS,
@@ -55,6 +56,7 @@ export function createSwapClient({
             response = await fetchImpl(swapUrl, {
                 method: 'POST',
                 headers: {
+                    ...headers,
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'X-Service-Credential': secret,
                 },

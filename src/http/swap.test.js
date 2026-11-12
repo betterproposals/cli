@@ -46,6 +46,14 @@ describe('createSwapClient', () => {
         expect(session).toEqual({ internalToken: tokenFor(3), accountId: 3, expiresAt: state.time + 300_000 });
     });
 
+    test('sends the extra headers, which never override the credential', async () => {
+        const state = setup(() => ok(), { headers: { 'X-Forwarded-Proto': 'https', 'X-Service-Credential': 'forged' } });
+        await state.client.exchange('bpat_abc');
+
+        expect(state.calls[0].init.headers['X-Forwarded-Proto']).toBe('https');
+        expect(state.calls[0].init.headers['X-Service-Credential']).toBe('s'.repeat(32));
+    });
+
     test('remembers the session until 30 seconds before it expires', async () => {
         const state = setup(() => ok());
         await state.client.exchange('bpat_abc');

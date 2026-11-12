@@ -10,7 +10,7 @@ const valid = {
 
 describe('loadHttpConfig', () => {
     test('reads the settings and derives the resource and metadata URLs', () => {
-        const config = loadHttpConfig({ ...valid, BP_API_URL: 'http://api.internal/', BP_API_HEADERS: '{"Host":"api.example.com"}', PORT: '8080' });
+        const config = loadHttpConfig({ ...valid, BP_API_URL: 'http://api.internal/', BP_API_HEADERS: '{"Host":"api.example.com"}', OAUTH_SWAP_HEADERS: '{"X-Forwarded-Proto":"https"}', PORT: '8080' });
 
         expect(config).toEqual({
             port: 8080,
@@ -20,6 +20,7 @@ describe('loadHttpConfig', () => {
             issuer: 'https://app.example.com',
             swapUrl: 'http://10.0.0.5/oauth/internal/swap',
             swapSecret: 'x'.repeat(32),
+            swapHeaders: { 'X-Forwarded-Proto': 'https' },
             apiBaseUrl: 'http://api.internal',
             apiHeaders: { Host: 'api.example.com' },
         });
@@ -49,7 +50,13 @@ describe('loadHttpConfig', () => {
         expect(() => loadHttpConfig({ ...valid, PORT: '70000' })).toThrow('PORT');
     });
 
-    test('a bad BP_API_HEADERS is refused', () => {
+    test('the swap headers default to none', () => {
+        expect(loadHttpConfig(valid).swapHeaders).toEqual({});
+    });
+
+    test('bad header settings are refused, naming the variable', () => {
         expect(() => loadHttpConfig({ ...valid, BP_API_HEADERS: 'nope' })).toThrow('BP_API_HEADERS');
+        expect(() => loadHttpConfig({ ...valid, OAUTH_SWAP_HEADERS: 'nope' })).toThrow('OAUTH_SWAP_HEADERS');
+        expect(() => loadHttpConfig({ ...valid, OAUTH_SWAP_HEADERS: '{"A":1}' })).toThrow('OAUTH_SWAP_HEADERS');
     });
 });

@@ -1,4 +1,4 @@
-import { loadApiConfig } from '../core/context.js';
+import { loadApiConfig, parseHeadersEnv } from '../core/context.js';
 
 const DEFAULT_PORT = 3000;
 const MIN_SECRET_LENGTH = 32;
@@ -23,6 +23,8 @@ function requiredUrl(env, name) {
  * OAUTH_SWAP_URL: the main app endpoint that exchanges an access token for an
  *   internal API token (it can be a private address, unlike OAUTH_ISSUER)
  * OAUTH_SWAP_SECRET: the credential this server sends to the swap endpoint
+ * OAUTH_SWAP_HEADERS: optional JSON object of extra headers for the swap request
+ *   (for example X-Forwarded-Proto when the endpoint is reached over a private route)
  * BP_API_URL, BP_API_HEADERS: see loadApiConfig()
  * PORT: listen port (default 3000)
  *
@@ -43,6 +45,8 @@ export function loadHttpConfig(env = process.env) {
         throw new Error(`PORT is not a valid port: ${env.PORT}`);
     }
 
+    const swapHeaders = parseHeadersEnv(env.OAUTH_SWAP_HEADERS, 'OAUTH_SWAP_HEADERS');
+
     const { baseUrl, headers } = loadApiConfig(env);
 
     return {
@@ -53,6 +57,7 @@ export function loadHttpConfig(env = process.env) {
         issuer,
         swapUrl,
         swapSecret,
+        swapHeaders,
         apiBaseUrl: baseUrl,
         apiHeaders: headers,
     };

@@ -11,6 +11,28 @@ let defaults = {};
 let envConfig = null;
 
 /**
+ * A JSON object of header names to string values, read from an environment
+ * variable (empty when it is not set). Throws a message naming the variable.
+ */
+export function parseHeadersEnv(raw, name) {
+    if (!raw) return {};
+
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        throw new Error(`${name} must be a JSON object, for example {"Host":"api.example.com"}.`);
+    }
+    const valid = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        && Object.values(parsed).every((value) => typeof value === 'string');
+    if (!valid) {
+        throw new Error(`${name} must be a JSON object of header names to string values.`);
+    }
+
+    return parsed;
+}
+
+/**
  * API location and extra headers from the environment.
  *
  * BP_API_URL: base URL of the API, defaults to the production API.
@@ -25,21 +47,7 @@ export function loadApiConfig(env = process.env) {
         throw new Error(`BP_API_URL is not a valid URL: ${raw}`);
     }
 
-    let headers = {};
-    if (env.BP_API_HEADERS) {
-        let parsed;
-        try {
-            parsed = JSON.parse(env.BP_API_HEADERS);
-        } catch {
-            throw new Error('BP_API_HEADERS must be a JSON object, for example {"Host":"api.example.com"}.');
-        }
-        const valid = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-            && Object.values(parsed).every((value) => typeof value === 'string');
-        if (!valid) {
-            throw new Error('BP_API_HEADERS must be a JSON object of header names to string values.');
-        }
-        headers = parsed;
-    }
+    const headers = parseHeadersEnv(env.BP_API_HEADERS, 'BP_API_HEADERS');
 
     return { baseUrl: raw.replace(/\/+$/, ''), headers };
 }

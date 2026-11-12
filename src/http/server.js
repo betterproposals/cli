@@ -41,7 +41,7 @@ function bearerToken(req) {
  * is passed in, so tests can run it against a fake swap and a fake API.
  */
 export function createHandler(config, { swapClient, limitsRegistry } = {}) {
-    const swap = swapClient ?? createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret });
+    const swap = swapClient ?? createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret, headers: config.swapHeaders });
     const limits = limitsRegistry ?? createLimitsRegistry();
 
     // No limit notes: the limits differ per account and this server is shared,
