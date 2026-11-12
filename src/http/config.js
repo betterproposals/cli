@@ -1,0 +1,59 @@
+import { loadApiConfig } from '../core/context.js';
+
+const DEFAULT_PORT = 3000;
+const MIN_SECRET_LENGTH = 32;
+
+function requiredUrl(env, name) {
+    const raw = env[name];
+    if (!raw) throw new Error(`${name} is required.`);
+    try {
+        new URL(raw);
+    } catch {
+        throw new Error(`${name} is not a valid URL: ${raw}`);
+    }
+    return raw.replace(/\/+$/, '');
+}
+
+/**
+ * Configuration of the hosted MCP server, read from the environment.
+ *
+ * MCP_PUBLIC_URL: the public origin of this server, for example
+ *   https://mcp.betterproposals.io (the MCP endpoint is MCP_PUBLIC_URL/mcp)
+ * OAUTH_ISSUER: the main app that signs users in, announced to the clients
+ * OAUTH_SWAP_URL: the main app endpoint that exchanges an access token for an
+ *   internal API token (it can be a private address, unlike OAUTH_ISSUER)
+ * OAUTH_SWAP_SECRET: the credential this server sends to the swap endpoint
+ * BP_API_URL, BP_API_HEADERS: see loadApiConfig()
+ * PORT: listen port (default 3000)
+ *
+ * Throws a message naming the problem, so the process can refuse to start.
+ */
+export function loadHttpConfig(env = process.env) {
+    const publicUrl = requiredUrl(env, 'MCP_PUBLIC_URL');
+    const issuer = requiredUrl(env, 'OAUTH_ISSUER');
+    const swapUrl = requiredUrl(env, 'OAUTH_SWAP_URL');
+
+    const swapSecret = env.OAUTH_SWAP_SECRET || '';
+    if (swapSecret.length < MIN_SECRET_LENGTH) {
+        throw new Error(`OAUTH_SWAP_SECRET is required and must be at least ${MIN_SECRET_LENGTH} characters.`);
+    }
+
+    const port = env.PORT === undefined || env.PORT === '' ? DEFAULT_PORT : Number(env.PORT);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+        throw new Error(`PORT is not a valid port: ${env.PORT}`);
+    }
+
+    const { baseUrl, headers } = loadApiConfig(env);
+
+    return {
+        port,
+        publicUrl,
+        resourceUrl: `${publicUrl}/mcp`,
+        metadataUrl: `${publicUrl}/.well-known/oauth-protected-resource`,
+        issuer,
+        swapUrl,
+        swapSecret,
+        apiBaseUrl: baseUrl,
+        apiHeaders: headers,
+    };
+}
