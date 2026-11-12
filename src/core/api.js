@@ -1,5 +1,5 @@
 import { getContext } from './context.js';
-import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, readLimitsCache, writeLimitsCache, DEFAULT_LIMITS } from './limits.js';
+import { assertParamLengths, assertRequestLength, byteLength, isPerValue, listMaxItems, DEFAULT_LIMITS } from './limits.js';
 
 function encodeForm(body) {
     const form = new URLSearchParams();
@@ -117,43 +117,31 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
     return data;
 }
 
-// Memoised for the life of the process. The authoritative value comes from a
-// live call rather than the disk cache, because the limit is per-account and a
-// single process may be driving a different account than the last one did
-// (setOverrideToken, or a re-login). The disk cache is a warm start for the
-// advisory prose in limits.js, not the basis for rejecting a request.
-let limitsPromise = null;
+// Never throws and never blocks a real operation: an API too old to serve
+// /settings/limits, a network failure, or an expired session all fall back to
+// the conservative default. Being wrong here costs an extra round trip and a
+// server-side 400; throwing here would break every write.
+async function loadLimits() {
+    try {
+        const response = await settings.limits();
+        return { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
+    } catch {
+        return { ...DEFAULT_LIMITS };
+    }
+}
 
 /**
  * The parameter limits in force for the authenticated account.
  *
- * Never throws and never blocks a real operation: an API too old to serve
- * /settings/limits, a network failure, or an expired session all fall back to
- * the conservative default. Being wrong here costs an extra round trip and a
- * server-side 400; throwing here would break every write.
+ * What is remembered, and for how long, is up to the limits store of the
+ * context (the stdio CLI keeps it for the process and warms it from disk, the
+ * hosted server keeps it per account for a few minutes). Without a store the
+ * limits are looked up on every call.
  */
 export function getLimits() {
-    if (limitsPromise) return limitsPromise;
+    const { limitsStore } = getContext();
 
-    limitsPromise = (async () => {
-        try {
-            const response = await settings.limits();
-            const limits = { ...DEFAULT_LIMITS, ...response.data, source: 'api' };
-            writeLimitsCache(limits);
-            return limits;
-        } catch {
-            return readLimitsCache() ?? { ...DEFAULT_LIMITS };
-        }
-    })();
-
-    return limitsPromise;
-}
-
-// The override token swaps the acting account mid-process (the PHP web agent
-// passes one per invocation), which invalidates anything we resolved for the
-// previous one.
-export function resetLimits() {
-    limitsPromise = null;
+    return limitsStore ? limitsStore.resolve(loadLimits) : loadLimits();
 }
 
 export const settings = {

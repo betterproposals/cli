@@ -55,6 +55,7 @@ function resolveDefaults() {
         headers: envConfig.headers,
         getAuthHeaders: noAuth,
         refreshAuth: null,
+        limitsStore: null,
         ...defaults,
     };
 }
@@ -67,6 +68,8 @@ function resolveDefaults() {
  * - getAuthHeaders(): resolves the authentication headers for one API request
  * - refreshAuth(): called once after a 401 so the request can be retried;
  *   leave it null when a 401 should simply fail
+ * - limitsStore: remembers the parameter limits of the account (see
+ *   limits-store.js); null looks them up on every use
  */
 export function setDefaultContext(partial) {
     defaults = { ...defaults, ...partial };

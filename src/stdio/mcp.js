@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { TOOLS } from '../core/tools.js';
+import { TOOLS } from './tools.js';
+import { registerTools } from '../core/register.js';
 import { getUpdateInfo, maybeRefreshUpdateCache } from './update.js';
 import { describeLimit } from '../core/limits.js';
+import { getCachedLimits } from './limits-cache.js';
 import { configureStdioContext } from './bootstrap.js';
 import pkg from '../../package.json';
 
@@ -18,7 +20,7 @@ maybeRefreshUpdateCache();
 // the disk cache. It's advisory — the api_limits tool gives the live value, and
 // api.js enforces against it — so a cold cache showing the conservative default
 // is fine.
-const notes = [describeLimit()];
+const notes = [describeLimit(getCachedLimits())];
 
 const updateInfo = getUpdateInfo();
 if (updateInfo) {
@@ -34,19 +36,7 @@ const server = new McpServer(
     { instructions: notes.join('\n\n') },
 );
 
-function ok(data) {
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-}
-
-function err(error) {
-    return { content: [{ type: 'text', text: error.message }], isError: true };
-}
-
-for (const { name, description, inputSchema, handler } of TOOLS) {
-    server.registerTool(name, { description, inputSchema }, async (args) => {
-        try { return ok(await handler(args)); } catch (e) { return err(e); }
-    });
-}
+registerTools(server, TOOLS);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
