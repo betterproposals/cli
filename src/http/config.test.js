@@ -23,7 +23,17 @@ describe('loadHttpConfig', () => {
             swapHeaders: { 'X-Forwarded-Proto': 'https' },
             apiBaseUrl: 'http://api.internal',
             apiHeaders: { Host: 'api.example.com' },
+            maxResultChars: 100000,
         });
+    });
+
+    test('the largest answer defaults to 100000 and can be set', () => {
+        expect(loadHttpConfig(valid).maxResultChars).toBe(100000);
+        expect(loadHttpConfig({ ...valid, MCP_MAX_RESULT_CHARS: '50000' }).maxResultChars).toBe(50000);
+    });
+
+    test.each(['abc', '10', '1.5'])('MCP_MAX_RESULT_CHARS %s is refused', (value) => {
+        expect(() => loadHttpConfig({ ...valid, MCP_MAX_RESULT_CHARS: value })).toThrow('MCP_MAX_RESULT_CHARS');
     });
 
     test('the port defaults to 3000', () => {

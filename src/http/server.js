@@ -79,7 +79,7 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
             { name: 'Better Proposals', version: pkg.version },
             { instructions },
         );
-        registerTools(server, tools);
+        registerTools(server, tools, { maxResultChars: config.maxResultChars });
         return server;
     }
 

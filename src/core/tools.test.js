@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
-import { annotationsFor, buildTools } from './tools.js';
+import { resetContextForTests, runWithContext } from './context.js';
+import { annotationsFor, buildTools, withoutPriceTables } from './tools.js';
 
 const WRITE_TOOLS = [
     'companies_create', 'document_types_create', 'documents_block_pricing', 'documents_create',
@@ -77,6 +78,47 @@ describe('src/core', () => {
         for (const file of files) {
             const source = readFileSync(dir + file, 'utf8');
             expect(`${file}: ${/from '\.\.\/(stdio|http)\//.test(source)}`).toBe(`${file}: false`);
+        }
+    });
+});
+
+describe('list size controls', () => {
+    const byName = (name) => buildTools().find((tool) => tool.name === name);
+
+    test('per_page defaults to 10 and is capped at 50 on every paginated tool', () => {
+        for (const tool of buildTools().filter((t) => t.inputSchema.per_page)) {
+            const schema = tool.inputSchema.per_page;
+            expect(schema.parse(undefined)).toBe(10);
+            expect(schema.parse(50)).toBe(50);
+            expect(schema.safeParse(51).success).toBe(false);
+        }
+    });
+
+    test('withoutPriceTables drops the tables of every document and keeps the rest', () => {
+        const answer = { status: 'success', data: [{ ID: 1, PriceTables: [{ a: 1 }] }, { ID: 2 }] };
+        expect(withoutPriceTables(answer)).toEqual({ status: 'success', data: [{ ID: 1 }, { ID: 2 }] });
+        expect(answer.data[0].PriceTables).toBeDefined();
+    });
+
+    test('withoutPriceTables leaves anything that is not a list answer alone', () => {
+        expect(withoutPriceTables({ status: 'error' })).toEqual({ status: 'error' });
+        expect(withoutPriceTables(null)).toBe(null);
+    });
+
+    test('the list tools leave the pricing tables out, documents_get does not touch them', async () => {
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = async () => new Response(JSON.stringify({ status: 'success', data: [{ ID: 1, PriceTables: [{ a: 1 }] }] }));
+        try {
+            const context = { baseUrl: 'http://api.test', headers: {}, getAuthHeaders: async () => ({}) };
+            for (const name of ['documents_list', 'documents_list_new', 'documents_list_opened', 'documents_list_sent', 'documents_list_signed', 'documents_list_paid']) {
+                const answer = await runWithContext(context, () => byName(name).handler({ page: 1, per_page: 10 }));
+                expect(answer).toEqual({ status: 'success', data: [{ ID: 1 }] });
+            }
+            const one = await runWithContext(context, () => byName('documents_get').handler({ id: 1 }));
+            expect(JSON.stringify(one)).toContain('PriceTables');
+        } finally {
+            globalThis.fetch = realFetch;
+            resetContextForTests();
         }
     });
 });

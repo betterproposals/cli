@@ -1,4 +1,5 @@
 import { loadApiConfig, parseHeadersEnv } from '../core/context.js';
+import { MAX_RESULT_CHARS } from '../core/register.js';
 
 const DEFAULT_PORT = 3000;
 const MIN_SECRET_LENGTH = 32;
@@ -26,6 +27,8 @@ function requiredUrl(env, name) {
  * OAUTH_SWAP_HEADERS: optional JSON object of extra headers for the swap request
  *   (for example X-Forwarded-Proto when the endpoint is reached over a private route)
  * BP_API_URL, BP_API_HEADERS: see loadApiConfig()
+ * MCP_MAX_RESULT_CHARS: the largest tool answer returned, larger ones ask the model
+ *   to narrow the request (default: see register.js)
  * PORT: listen port (default 3000)
  *
  * Throws a message naming the problem, so the process can refuse to start.
@@ -45,6 +48,11 @@ export function loadHttpConfig(env = process.env) {
         throw new Error(`PORT is not a valid port: ${env.PORT}`);
     }
 
+    const maxResultChars = env.MCP_MAX_RESULT_CHARS === undefined || env.MCP_MAX_RESULT_CHARS === '' ? MAX_RESULT_CHARS : Number(env.MCP_MAX_RESULT_CHARS);
+    if (!Number.isInteger(maxResultChars) || maxResultChars < 1000) {
+        throw new Error(`MCP_MAX_RESULT_CHARS must be a whole number of at least 1000: ${env.MCP_MAX_RESULT_CHARS}`);
+    }
+
     const swapHeaders = parseHeadersEnv(env.OAUTH_SWAP_HEADERS, 'OAUTH_SWAP_HEADERS');
 
     const { baseUrl, headers } = loadApiConfig(env);
@@ -60,5 +68,6 @@ export function loadHttpConfig(env = process.env) {
         swapHeaders,
         apiBaseUrl: baseUrl,
         apiHeaders: headers,
+        maxResultChars,
     };
 }

@@ -9,13 +9,23 @@ import { jsonLimitNote, valueLimitNote } from './limits.js';
 // failure; consumers wrap errors in their protocol's error shape.
 
 const pageSchema = z.number().int().positive().optional().default(1).describe('Page number');
-const perPageSchema = z.number().int().positive().optional().default(10).describe('Results per page');
+const perPageSchema = z.number().int().positive().max(50).optional().default(10).describe('Results per page (maximum 50)');
 const typeSchema = z.number().int().optional().describe(
     'Document type filter ID. ' +
     'Built-in types: 1=Proposals, 2=Quotes, 3=Brochures, 4=Statements of Work, ' +
     '5=Contracts, 6=Sign offs, 7=Job Offers. ' +
     'Users may also have custom types — use the document_types_list tool to discover them.'
 );
+
+// The list endpoints attach the pricing tables to every document, which makes an
+// answer many times larger. Lists leave them out, documents_get has them.
+export function withoutPriceTables(answer) {
+    if (!Array.isArray(answer?.data)) return answer;
+    return { ...answer, data: answer.data.map(({ PriceTables, ...document }) => document) };
+}
+
+const listHandler = (method) => async ({ page, per_page, type }) =>
+    withoutPriceTables(await documents[method]({ page, perPage: per_page, type }));
 
 const pagination = { page: pageSchema, per_page: perPageSchema };
 const paginationWithType = { ...pagination, type: typeSchema };
@@ -34,37 +44,37 @@ const toolDefinitions = ({ LIMIT_NOTE, JSON_LIMIT_NOTE }) => [
         name: 'documents_list',
         description: 'List all documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.list({ page, perPage: per_page, type }),
+        handler: listHandler('list'),
     },
     {
         name: 'documents_list_new',
         description: 'List new documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listNew({ page, perPage: per_page, type }),
+        handler: listHandler('listNew'),
     },
     {
         name: 'documents_list_opened',
         description: 'List opened documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listOpened({ page, perPage: per_page, type }),
+        handler: listHandler('listOpened'),
     },
     {
         name: 'documents_list_sent',
         description: 'List sent documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listSent({ page, perPage: per_page, type }),
+        handler: listHandler('listSent'),
     },
     {
         name: 'documents_list_signed',
         description: 'List signed documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listSigned({ page, perPage: per_page, type }),
+        handler: listHandler('listSigned'),
     },
     {
         name: 'documents_list_paid',
         description: 'List paid documents',
         inputSchema: paginationWithType,
-        handler: ({ page, per_page, type }) => documents.listPaid({ page, perPage: per_page, type }),
+        handler: listHandler('listPaid'),
     },
     {
         name: 'documents_get',
