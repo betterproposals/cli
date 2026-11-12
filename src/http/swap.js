@@ -18,20 +18,22 @@ export class SwapError extends Error {
     }
 }
 
-/** The account id carried by an internal token. It is not verified here: the API does that. */
-export function accountIdFromInternalToken(token) {
+/** The user and account ids carried by an internal token. They are not verified here: the API does that. */
+export function identityFromInternalToken(token) {
     try {
         const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
-        if (Number.isInteger(claims.aid) && claims.aid > 0) return claims.aid;
+        if (Number.isInteger(claims.aid) && claims.aid > 0 && Number.isInteger(claims.uid) && claims.uid > 0) {
+            return { userId: claims.uid, accountId: claims.aid };
+        }
     } catch { /* falls through */ }
-    throw new SwapError('unavailable', 'The swap endpoint returned a token without an account.');
+    throw new SwapError('unavailable', 'The swap endpoint returned a token without a user and an account.');
 }
 
 /**
  * Exchanges the access token a client presents for the short-lived internal
  * token the API accepts. The user's own token never travels to the API.
  *
- * exchange(accessToken) resolves { internalToken, accountId, expiresAt } and
+ * exchange(accessToken) resolves { internalToken, userId, accountId, expiresAt } and
  * rejects with a SwapError. A token is remembered until `marginMs` before it
  * expires; concurrent calls for the same access token share one request; a
  * refusal is remembered briefly (`refusalMs`) so a bad token cannot be used to
@@ -89,7 +91,7 @@ export function createSwapClient({
 
         return {
             internalToken: body.internal_token,
-            accountId: accountIdFromInternalToken(body.internal_token),
+            ...identityFromInternalToken(body.internal_token),
             expiresAt: now() + body.expires_in * 1000,
         };
     }

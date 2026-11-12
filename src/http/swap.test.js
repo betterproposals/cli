@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { accountIdFromInternalToken, createSwapClient, SwapError } from './swap.js';
+import { createSwapClient, identityFromInternalToken, SwapError } from './swap.js';
 
 const tokenFor = (aid) =>
     `v1.${Buffer.from(JSON.stringify({ uid: 7, aid, exp: 9999999999 })).toString('base64url')}.signature`;
@@ -23,13 +23,13 @@ function setup(responder, options = {}) {
 const ok = (aid = 3, expiresIn = 300) => new Response(JSON.stringify({ internal_token: tokenFor(aid), expires_in: expiresIn }));
 const refused = (status, error) => new Response(JSON.stringify({ error }), { status });
 
-describe('accountIdFromInternalToken', () => {
-    test('reads the account claim', () => {
-        expect(accountIdFromInternalToken(tokenFor(42))).toBe(42);
+describe('identityFromInternalToken', () => {
+    test('reads the user and account claims', () => {
+        expect(identityFromInternalToken(tokenFor(42))).toEqual({ userId: 7, accountId: 42 });
     });
 
-    test.each(['', 'garbage', 'v1.e30.sig', `v1.${Buffer.from('{"aid":"x"}').toString('base64url')}.sig`])('rejects %p', (token) => {
-        expect(() => accountIdFromInternalToken(token)).toThrow(SwapError);
+    test.each(['', 'garbage', 'v1.e30.sig', `v1.${Buffer.from('{"aid":"x"}').toString('base64url')}.sig`, `v1.${Buffer.from('{"aid":3}').toString('base64url')}.sig`])('rejects %p', (token) => {
+        expect(() => identityFromInternalToken(token)).toThrow(SwapError);
     });
 });
 
@@ -43,7 +43,7 @@ describe('createSwapClient', () => {
         expect(state.calls[0].init.method).toBe('POST');
         expect(state.calls[0].init.headers['X-Service-Credential']).toBe('s'.repeat(32));
         expect(state.calls[0].init.body).toBe('access_token=bpat_abc');
-        expect(session).toEqual({ internalToken: tokenFor(3), accountId: 3, expiresAt: state.time + 300_000 });
+        expect(session).toEqual({ internalToken: tokenFor(3), userId: 7, accountId: 3, expiresAt: state.time + 300_000 });
     });
 
     test('sends the extra headers, which never override the credential', async () => {

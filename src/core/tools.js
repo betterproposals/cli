@@ -463,18 +463,24 @@ export function annotationsFor(name) {
 /**
  * The tools of the Better Proposals API.
  *
- * @param {{limitNotes?: {value?: string, json?: string}}} [options] The notes
- *   about the size limits appended to the descriptions of the write tools.
- *   Without them the notes describe the standard limit; the stdio server
- *   passes the ones of the account that is logged in.
+ * @param {{limitNotes?: {value?: string, json?: string}, disabled?: string[]}} [options]
+ *   limitNotes: the notes about the size limits appended to the descriptions of
+ *   the write tools. Without them the notes describe the standard limit; the
+ *   stdio server passes the ones of the account that is logged in.
+ *   disabled: names of tools to leave out (the hosted server's MCP_DISABLED_TOOLS);
+ *   a name that is not a tool throws, so a typo cannot silently leave one on.
  */
-export function buildTools({ limitNotes = {} } = {}) {
+export function buildTools({ limitNotes = {}, disabled = [] } = {}) {
     const notes = {
         LIMIT_NOTE: limitNotes.value ?? valueLimitNote(),
         JSON_LIMIT_NOTE: limitNotes.json ?? jsonLimitNote(),
     };
 
-    return toolDefinitions(notes)
-        .filter((tool) => !DISABLED_TOOLS.includes(tool.name))
+    const definitions = toolDefinitions(notes).filter((tool) => !DISABLED_TOOLS.includes(tool.name));
+    const unknown = disabled.filter((name) => !definitions.some((tool) => tool.name === name));
+    if (unknown.length) throw new Error(`Unknown tool name(s) to disable: ${unknown.join(', ')}.`);
+
+    return definitions
+        .filter((tool) => !disabled.includes(tool.name))
         .map((tool) => ({ ...tool, annotations: annotationsFor(tool.name) }));
 }

@@ -82,6 +82,19 @@ describe('src/core', () => {
     });
 });
 
+describe('disabled tools', () => {
+    test('leaves out the named tools and keeps the rest', () => {
+        const names = buildTools({ disabled: ['documents_edit', 'api_limits'] }).map((tool) => tool.name);
+        expect(names).toHaveLength(25);
+        expect(names).not.toContain('documents_edit');
+        expect(names).not.toContain('api_limits');
+    });
+
+    test('a name that is not a tool throws, naming it', () => {
+        expect(() => buildTools({ disabled: ['documents_get', 'nope', 'documents_populate'] })).toThrow('nope, documents_populate');
+    });
+});
+
 describe('list size controls', () => {
     const byName = (name) => buildTools().find((tool) => tool.name === name);
 

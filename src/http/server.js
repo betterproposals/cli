@@ -15,6 +15,7 @@ import { createLimitsRegistry } from '../core/limits-store.js';
 import { buildTools } from '../core/tools.js';
 import { registerTools } from '../core/register.js';
 import { loadHttpConfig } from './config.js';
+import { createRateLimiter } from './rate-limit.js';
 import { createSwapClient, SwapError } from './swap.js';
 import pkg from '../../package.json';
 
@@ -41,14 +42,16 @@ function bearerToken(req) {
  * The request handler: (Request) => Promise<Response>. Everything it talks to
  * is passed in, so tests can run it against a fake swap and a fake API.
  */
-export function createHandler(config, { swapClient, limitsRegistry } = {}) {
+export function createHandler(config, { swapClient, limitsRegistry, rateLimiter } = {}) {
     const swap = swapClient ?? createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret, headers: config.swapHeaders });
     const limits = limitsRegistry ?? createLimitsRegistry();
+    const rateLimit = rateLimiter ?? createRateLimiter({ limit: config.rateLimitPerMinute });
+    const disabled = config.disabledTools ?? [];
 
     // The standard text, for the requests that never show the descriptions
     // (a tool call). When a client reads them (initialize, tools/list) they are
     // built from the limits of the account instead, see describedFor().
-    const standardTools = buildTools();
+    const standardTools = buildTools({ disabled });
 
     const challenge = (error) =>
         `Bearer ${error ? `error="${error}", ` : ''}resource_metadata="${config.metadataUrl}"`;
@@ -70,7 +73,7 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
 
         return {
             instructions: describeLimit(limits),
-            tools: buildTools({ limitNotes: { value: valueLimitNote(limits), json: jsonLimitNote(limits) } }),
+            tools: buildTools({ limitNotes: { value: valueLimitNote(limits), json: jsonLimitNote(limits) }, disabled }),
         };
     }
 
@@ -100,6 +103,12 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
             if (error.kind === 'invalid_token') return unauthorized('invalid_token', error.message);
             if (error.kind === 'not_eligible') return json(403, { error: 'account_not_eligible', error_description: error.message });
             return json(503, { error: 'temporarily_unavailable', error_description: error.message });
+        }
+
+        const { allowed, retryAfterSeconds } = rateLimit.check(session.userId);
+        if (!allowed) {
+            return json(429, { error: 'rate_limited', error_description: 'Too many requests. Please wait a moment and try again.' },
+                { 'Retry-After': String(retryAfterSeconds) });
         }
 
         const context = {
@@ -164,7 +173,13 @@ function start() {
         process.exit(1);
     }
 
-    const handle = createHandler(config);
+    let handle;
+    try {
+        handle = createHandler(config);
+    } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+    }
 
     Bun.serve({
         port: config.port,

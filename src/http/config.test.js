@@ -24,6 +24,8 @@ describe('loadHttpConfig', () => {
             apiBaseUrl: 'http://api.internal',
             apiHeaders: { Host: 'api.example.com' },
             maxResultChars: 100000,
+            rateLimitPerMinute: 120,
+            disabledTools: [],
         });
     });
 
@@ -34,6 +36,20 @@ describe('loadHttpConfig', () => {
 
     test.each(['abc', '10', '1.5'])('MCP_MAX_RESULT_CHARS %s is refused', (value) => {
         expect(() => loadHttpConfig({ ...valid, MCP_MAX_RESULT_CHARS: value })).toThrow('MCP_MAX_RESULT_CHARS');
+    });
+
+    test('the rate limit defaults to 120 a minute, 0 switches it off', () => {
+        expect(loadHttpConfig(valid).rateLimitPerMinute).toBe(120);
+        expect(loadHttpConfig({ ...valid, MCP_RATE_LIMIT_PER_MINUTE: '0' }).rateLimitPerMinute).toBe(0);
+        expect(loadHttpConfig({ ...valid, MCP_RATE_LIMIT_PER_MINUTE: '30' }).rateLimitPerMinute).toBe(30);
+    });
+
+    test.each(['abc', '-1', '1.5'])('MCP_RATE_LIMIT_PER_MINUTE %s is refused', (value) => {
+        expect(() => loadHttpConfig({ ...valid, MCP_RATE_LIMIT_PER_MINUTE: value })).toThrow('MCP_RATE_LIMIT_PER_MINUTE');
+    });
+
+    test('MCP_DISABLED_TOOLS is a trimmed comma list', () => {
+        expect(loadHttpConfig({ ...valid, MCP_DISABLED_TOOLS: ' documents_edit, documents_create ,,' }).disabledTools).toEqual(['documents_edit', 'documents_create']);
     });
 
     test('the port defaults to 3000', () => {

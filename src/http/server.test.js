@@ -19,7 +19,7 @@ const config = {
 
 const realFetch = globalThis.fetch;
 const internalFor = (aid, tag = '') =>
-    `v1.${Buffer.from(JSON.stringify({ uid: 7, aid })).toString('base64url')}.sig${tag}`;
+    `v1.${Buffer.from(JSON.stringify({ uid: aid * 10, aid })).toString('base64url')}.sig${tag}`;
 
 let swapCalls;
 let apiCalls;
@@ -295,5 +295,64 @@ describe('hosted MCP server: limits of the account in the descriptions', () => {
         const result = (Array.isArray(body) ? body[0] : body).result;
 
         expect(descriptions(result)).toContain('Max 80 bytes');
+    });
+});
+
+function handlerWith(overrides) {
+    return createHandler({ ...config, ...overrides }, {
+        swapClient: createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret, fetchImpl: async (url, init) => fakeSwap(url, init) }),
+        limitsRegistry: createLimitsRegistry(),
+    });
+}
+
+describe('hosted MCP server: rate limit per user', () => {
+    test('a user past the limit gets a 429 with Retry-After, another user is not affected', async () => {
+        handle = handlerWith({ rateLimitPerMinute: 2 });
+
+        expect((await rpc('tools/list', {}, 'bpat_user3')).status).toBe(200);
+        expect((await rpc('tools/list', {}, 'bpat_user3')).status).toBe(200);
+
+        const limited = await rpc('tools/list', {}, 'bpat_user3');
+        expect(limited.status).toBe(429);
+        expect(Number(limited.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
+        expect(limited.headers.get('access-control-allow-origin')).toBe('*');
+        expect((await limited.json()).error).toBe('rate_limited');
+
+        expect((await rpc('tools/list', {}, 'bpat_user4')).status).toBe(200);
+    });
+
+    test('a limit of 0 switches it off', async () => {
+        handle = handlerWith({ rateLimitPerMinute: 0 });
+        for (let i = 0; i < 5; i++) expect((await rpc('tools/list', {}, 'bpat_user3')).status).toBe(200);
+    });
+
+    test('requests without a valid token do not use up the limit', async () => {
+        handle = handlerWith({ rateLimitPerMinute: 1 });
+        for (let i = 0; i < 3; i++) expect((await rpc('tools/list', {}, 'bpat_nope')).status).toBe(401);
+        expect((await rpc('tools/list', {}, 'bpat_user3')).status).toBe(200);
+    });
+});
+
+describe('hosted MCP server: disabled tools', () => {
+    test('tools named in the config are not listed', async () => {
+        handle = handlerWith({ disabledTools: ['documents_edit', 'documents_block_pricing'] });
+        const { result } = await (await rpc('tools/list', {})).json();
+        const names = result.tools.map((tool) => tool.name);
+
+        expect(names).toHaveLength(25);
+        expect(names).not.toContain('documents_edit');
+        expect(names).toContain('documents_get');
+    });
+
+    test('a disabled tool cannot be called', async () => {
+        handle = handlerWith({ disabledTools: ['documents_create'] });
+        const body = await (await callTool('documents_create', {})).json();
+
+        expect(body.error ?? body.result.isError).toBeTruthy();
+        expect(apiCalls.filter((call) => !call.url.includes('/settings/limits'))).toHaveLength(0);
+    });
+
+    test('a name that is not a tool stops the handler from being built', () => {
+        expect(() => handlerWith({ disabledTools: ['documents_edti'] })).toThrow('documents_edti');
     });
 });

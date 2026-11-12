@@ -2,6 +2,7 @@ import { loadApiConfig, parseHeadersEnv } from '../core/context.js';
 import { MAX_RESULT_CHARS } from '../core/register.js';
 
 const DEFAULT_PORT = 3000;
+const DEFAULT_RATE_LIMIT = 120;
 const MIN_SECRET_LENGTH = 32;
 
 function requiredUrl(env, name) {
@@ -29,6 +30,8 @@ function requiredUrl(env, name) {
  * BP_API_URL, BP_API_HEADERS: see loadApiConfig()
  * MCP_MAX_RESULT_CHARS: the largest tool answer returned, larger ones ask the model
  *   to narrow the request (default: see register.js)
+ * MCP_RATE_LIMIT_PER_MINUTE: requests per user per minute (default 120, 0 = off)
+ * MCP_DISABLED_TOOLS: comma separated names of tools to switch off
  * PORT: listen port (default 3000)
  *
  * Throws a message naming the problem, so the process can refuse to start.
@@ -53,6 +56,13 @@ export function loadHttpConfig(env = process.env) {
         throw new Error(`MCP_MAX_RESULT_CHARS must be a whole number of at least 1000: ${env.MCP_MAX_RESULT_CHARS}`);
     }
 
+    const rateLimitPerMinute = env.MCP_RATE_LIMIT_PER_MINUTE === undefined || env.MCP_RATE_LIMIT_PER_MINUTE === '' ? DEFAULT_RATE_LIMIT : Number(env.MCP_RATE_LIMIT_PER_MINUTE);
+    if (!Number.isInteger(rateLimitPerMinute) || rateLimitPerMinute < 0) {
+        throw new Error(`MCP_RATE_LIMIT_PER_MINUTE must be a whole number, 0 or more: ${env.MCP_RATE_LIMIT_PER_MINUTE}`);
+    }
+
+    const disabledTools = (env.MCP_DISABLED_TOOLS || '').split(',').map((name) => name.trim()).filter(Boolean);
+
     const swapHeaders = parseHeadersEnv(env.OAUTH_SWAP_HEADERS, 'OAUTH_SWAP_HEADERS');
 
     const { baseUrl, headers } = loadApiConfig(env);
@@ -69,5 +79,7 @@ export function loadHttpConfig(env = process.env) {
         apiBaseUrl: baseUrl,
         apiHeaders: headers,
         maxResultChars,
+        rateLimitPerMinute,
+        disabledTools,
     };
 }
