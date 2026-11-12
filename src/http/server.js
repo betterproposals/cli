@@ -9,7 +9,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { runWithContext } from '../core/context.js';
-import { describeLimit } from '../core/limits.js';
+import { getLimits } from '../core/api.js';
+import { describeLimit, jsonLimitNote, valueLimitNote } from '../core/limits.js';
 import { createLimitsRegistry } from '../core/limits-store.js';
 import { buildTools } from '../core/tools.js';
 import { registerTools } from '../core/register.js';
@@ -44,10 +45,10 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
     const swap = swapClient ?? createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret, headers: config.swapHeaders });
     const limits = limitsRegistry ?? createLimitsRegistry();
 
-    // No limit notes: the limits differ per account and this server is shared,
-    // so the descriptions carry the standard text and api_limits gives the
-    // account's own values.
-    const tools = buildTools();
+    // The standard text, for the requests that never show the descriptions
+    // (a tool call). When a client reads them (initialize, tools/list) they are
+    // built from the limits of the account instead, see describedFor().
+    const standardTools = buildTools();
 
     const challenge = (error) =>
         `Bearer ${error ? `error="${error}", ` : ''}resource_metadata="${config.metadataUrl}"`;
@@ -56,10 +57,25 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
         json(401, { error: error ?? 'unauthorized', ...(description && { error_description: description }) },
             { 'WWW-Authenticate': challenge(error) });
 
-    function buildServer() {
+    // The limits differ per account and this server is shared: the account's
+    // own are used (from its limits store, so the API is asked once in a while,
+    // never failing: the standard limit is the fallback).
+    async function describedFor(req) {
+        const body = await req.clone().json().catch(() => null);
+        const calls = Array.isArray(body) ? body : [body];
+        if (!calls.some((call) => call?.method === 'initialize' || call?.method === 'tools/list')) return null;
+
+        const limits = await getLimits();
+        return {
+            instructions: describeLimit(limits),
+            tools: buildTools({ limitNotes: { value: valueLimitNote(limits), json: jsonLimitNote(limits) } }),
+        };
+    }
+
+    function buildServer({ instructions, tools }) {
         const server = new McpServer(
             { name: 'Better Proposals', version: pkg.version },
-            { instructions: describeLimit() },
+            { instructions },
         );
         registerTools(server, tools);
         return server;
@@ -97,20 +113,23 @@ export function createHandler(config, { swapClient, limitsRegistry } = {}) {
             limitsStore: limits.forAccount(session.accountId),
         };
 
-        const server = buildServer();
-        const transport = new WebStandardStreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
-            enableJsonResponse: true,
+        return runWithContext(context, async () => {
+            const described = await describedFor(req) ?? { instructions: describeLimit(), tools: standardTools };
+            const server = buildServer(described);
+            const transport = new WebStandardStreamableHTTPServerTransport({
+                sessionIdGenerator: undefined,
+                enableJsonResponse: true,
+            });
+            await server.connect(transport);
+            try {
+                const response = await transport.handleRequest(req);
+                for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
+                return response;
+            } finally {
+                await transport.close();
+                await server.close();
+            }
         });
-        await server.connect(transport);
-        try {
-            const response = await runWithContext(context, () => transport.handleRequest(req));
-            for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
-            return response;
-        } finally {
-            await transport.close();
-            await server.close();
-        }
     }
 
     return async function handle(req) {

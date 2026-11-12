@@ -35,10 +35,14 @@ function fakeSwap(url, init) {
     return new Response(JSON.stringify({ error: 'invalid_token' }), { status: 401 });
 }
 
+const accountOf = (init) =>
+    JSON.parse(Buffer.from(init.headers.Authorization.split('.')[1], 'base64url').toString()).aid;
+
+// account 3 may send 50 bytes per parameter, account 4 80
 function fakeApi(url, init) {
     apiCalls.push({ url, init });
     if (url.includes('/settings/limits')) {
-        return new Response(JSON.stringify({ status: 'success', data: { parameter_max_length: 50 } }));
+        return new Response(JSON.stringify({ status: 'success', data: { parameter_max_length: accountOf(init) === 4 ? 80 : 50 } }));
     }
     return new Response(JSON.stringify({ status: 'success', data: [{ ID: 1 }] }));
 }
@@ -224,5 +228,63 @@ describe('hosted MCP server: tools', () => {
         expect(response.status).toBe(200);
         expect(result.isError).toBe(true);
         expect(result.content[0].text).toContain('API error 403');
+    });
+});
+
+describe('hosted MCP server: limits of the account in the descriptions', () => {
+    const descriptions = (result) => JSON.stringify(result.tools.map((tool) => tool.description + JSON.stringify(tool.inputSchema)));
+
+    test('initialize states the limit of the account', async () => {
+        const { result } = await (await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } })).json();
+
+        expect(result.instructions).toContain('50 bytes');
+        expect(result.instructions).not.toContain('standard limit');
+    });
+
+    test('tools/list describes the fields with the limit of the account, each account its own', async () => {
+        const a = (await (await rpc('tools/list', {}, 'bpat_user3')).json()).result;
+        const b = (await (await rpc('tools/list', {}, 'bpat_user4')).json()).result;
+
+        expect(descriptions(a)).toContain('Max 50 bytes');
+        expect(descriptions(a)).not.toContain('1000 bytes');
+        expect(descriptions(b)).toContain('Max 80 bytes');
+        expect(descriptions(b)).not.toContain('Max 50 bytes');
+    });
+
+    test('the limits are asked once for repeated listings, and not for a tool call', async () => {
+        await rpc('tools/list', {});
+        await rpc('tools/list', {});
+        await callTool('documents_list');
+
+        expect(apiCalls.filter((call) => call.url.includes('/settings/limits'))).toHaveLength(1);
+        expect(apiCalls).toHaveLength(2);
+    });
+
+    test('a tool call alone never asks for the limits', async () => {
+        await callTool('documents_list');
+
+        expect(apiCalls.map((call) => call.url)).toEqual(['http://api.internal/proposal/?page=1&per_page=10']);
+    });
+
+    test('without the limits of the account, the standard ones are described and the list is still served', async () => {
+        globalThis.fetch = async () => new Response('down', { status: 500, statusText: 'Server Error' });
+        const response = await rpc('tools/list', {});
+        const { result } = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(result.tools).toHaveLength(27);
+        expect(descriptions(result)).toContain('Max 1000 bytes');
+    });
+
+    test('a batch is described too', async () => {
+        const response = await handle(new Request('https://mcp.example.com/mcp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer bpat_user4' },
+            body: JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }]),
+        }));
+        const body = await response.json();
+        const result = (Array.isArray(body) ? body[0] : body).result;
+
+        expect(descriptions(result)).toContain('Max 80 bytes');
     });
 });
