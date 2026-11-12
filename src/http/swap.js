@@ -63,7 +63,9 @@ export function createSwapClient({
                 body: new URLSearchParams({ access_token: accessToken }).toString(),
                 signal: AbortSignal.timeout(timeoutMs),
             });
-        } catch {
+        } catch (error) {
+            // The cause only, never the request: it carries the service credential
+            console.error(`Swap request to ${new URL(swapUrl).origin} failed: ${error.name}${error.code ? ` (${error.code})` : ''}: ${error.message}`);
             throw new SwapError('unavailable', 'The sign-in service could not be reached.');
         }
 

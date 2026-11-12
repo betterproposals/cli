@@ -121,6 +121,22 @@ describe('createSwapClient', () => {
         expect(state.client.size).toBe(0);
     });
 
+    test('logs why the endpoint could not be reached, without the credential', async () => {
+        const logged = [];
+        const original = console.error;
+        console.error = (...args) => logged.push(args.join(' '));
+        try {
+            const state = setup(() => { throw Object.assign(new Error('Unable to connect'), { code: 'ConnectionRefused' }); });
+            await expect(state.client.exchange('bpat_secret_token')).rejects.toMatchObject({ kind: 'unavailable' });
+        } finally {
+            console.error = original;
+        }
+
+        expect(logged).toEqual(['Swap request to http://main.internal failed: Error (ConnectionRefused): Unable to connect']);
+        expect(logged.join()).not.toContain('bpat_secret_token');
+        expect(logged.join()).not.toContain('s'.repeat(32));
+    });
+
     test('holds at most maxEntries sessions', async () => {
         const state = setup(() => ok(), { maxEntries: 2 });
         for (const token of ['a', 'b', 'c']) await state.client.exchange(token);
