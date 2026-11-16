@@ -566,6 +566,54 @@ betterproposals documents links <id> [options]
 
 ---
 
+### `documents library-block <id>`
+
+Add a block of your Content Library (content block, text, video or full width image) to a document, exactly like the editor does: the block keeps the content and settings saved in the library. Find the blocks with [`library all`](#library-all).
+
+```bash
+betterproposals documents library-block <id> --library-id <id> --library-type <type> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--library-id <id>` | ID of the Content Library block (required) | |
+| `--library-type <type>` | Type of the Content Library block: `customblock`, `text`, `video` or `bigphoto` (required) | |
+| `--section <value>` | Existing section ID or name of a new section | a new untitled section |
+| `--position <number>` | Position of the block in the section, starting from 1 | at the end of the section |
+
+---
+
+### `documents library-section <id>`
+
+Add a section of your Content Library to a document, exactly like the editor does: a new section after the existing ones, with the name and all the blocks of the library section.
+
+```bash
+betterproposals documents library-section <id> --library-id <id>
+```
+
+| Option | Description |
+|--------|-------------|
+| `--library-id <id>` | ID of the Content Library section (required) |
+
+---
+
+### `documents library-pricing <id>`
+
+Add a pricing table of your Content Library, with all its line items, to the pricing block of a document, exactly like the editor does. When the document has no pricing block yet, the block is added with the table in it. Quote totals are recalculated. The table can then be changed with [`documents pricing`](#documents-pricing-id) using the returned table ID.
+
+```bash
+betterproposals documents library-pricing <id> --library-id <id> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--library-id <id>` | ID of the Content Library pricing table (required) | |
+| `--table-position <number>` | Position of the table among the tables of the pricing block, starting from 1 | after the last table |
+| `--section <value>` | Used only when the pricing block is added: existing section ID or name of a new section | a new untitled section |
+| `--position <number>` | Used only when the pricing block is added: position of the block in the section, starting from 1 | at the end of the section |
+
+---
+
 ### `settings get`
 
 Get account settings.
@@ -717,6 +765,35 @@ betterproposals templates all [options]
 |--------|-------------|---------|
 | `-p, --page <number>` | Page number | `1` |
 | `-n, --per-page <number>` | Results per page | `10` |
+
+---
+
+### `library all`
+
+List the items of your Content Library, newest first: blocks (`customblock` content block, `text`, `video`, `bigphoto` full width image), sections (`section`) and pricing tables (`pricing_table`), with a short preview of their content.
+
+```bash
+betterproposals library all [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --page <number>` | Page number | `1` |
+| `-n, --per-page <number>` | Results per page (max 100) | `10` |
+| `--type <type>` | Only items of this type: `customblock`, `text`, `video`, `bigphoto`, `section` or `pricing_table` | all the types |
+| `--search <text>` | Only items whose name contains this text | |
+| `--folder <id>` | Only items in this Content Library folder | |
+| `--prebuilt` | List the prebuilt blocks and sections of Better Proposals (the Prebuilt panels of the editor) instead of your Content Library. They are added to documents with the same commands | |
+
+---
+
+### `library get <type> <id>`
+
+Get a Content Library item (also a prebuilt block or section) with its full content: the HTML and settings of a block, the blocks of a section, the line items of a pricing table.
+
+```bash
+betterproposals library get <type> <id>
+```
 
 ---
 
