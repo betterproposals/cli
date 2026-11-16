@@ -106,13 +106,22 @@ async function request(method, path, { params = {}, body, skipLimitCheck = false
         return request(method, path, { params, body, skipLimitCheck }, false);
     }
 
-    if (!response.ok) {
+    // The API answers its errors (validation, limits, not found...) with an
+    // error status code AND a message in the body: read the message so the
+    // user (and the AI) know why the request failed
+    const text = await response.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* not a JSON answer */ }
+
+    if (!response.ok || data?.status === 'error') {
+        if (typeof data?.message === 'string' && data.message !== '') {
+            throw new Error(data.message);
+        }
         throw new Error(`API error ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    if (data.status === 'error') {
-        throw new Error(data.message);
+    if (data === null) {
+        throw new Error(`API error ${response.status}: invalid response`);
     }
 
     return data;
@@ -225,6 +234,21 @@ export const templates = {
 
     get(id) {
         return request('GET', `/template/${id}`);
+    },
+};
+
+// Content Library of the account: blocks (customblock, text, video, bigphoto),
+// sections and pricing tables, to be added to documents with
+// documents.block('library'), documents.librarySection() and
+// documents.libraryPricingTable()
+export const library = {
+    // prebuilt: the prebuilt blocks and sections of Better Proposals instead of the account library
+    list({ page = 1, perPage = 10, type, search, folder, prebuilt } = {}) {
+        return request('GET', '/library', { params: { page, per_page: perPage, type, search, folder, prebuilt: prebuilt ? 1 : undefined } });
+    },
+
+    get(type, id) {
+        return request('GET', `/library/${encodeURIComponent(type)}/${id}`);
     },
 };
 
@@ -412,6 +436,30 @@ export const documents = {
 
         response.data.Requests = requests.length;
         return response;
+    },
+
+    // Content Library section, added after the other sections of the document
+    librarySection({ id, librarySectionId } = {}) {
+        return request('POST', '/proposal/section/library', {
+            body: {
+                ID: id,
+                LibrarySectionID: librarySectionId,
+            },
+        });
+    },
+
+    // Content Library pricing table, added to the pricing block of the
+    // document (the block is added when the document doesn't have one)
+    libraryPricingTable({ id, libraryPricingTableId, tablePosition, section, position } = {}) {
+        return request('POST', '/proposal/block/pricing/library', {
+            body: {
+                ID: id,
+                LibraryPricingTableID: libraryPricingTableId,
+                TablePosition: tablePosition,
+                Section: section,
+                Position: position,
+            },
+        });
     },
 
     // Link generation only version of send()
