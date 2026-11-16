@@ -280,7 +280,7 @@ describe('hosted MCP server: limits of the account in the descriptions', () => {
         const { result } = await response.json();
 
         expect(response.status).toBe(200);
-        expect(result.tools).toHaveLength(27);
+        expect(result.tools).toHaveLength(32);
         expect(descriptions(result)).toContain('Max 1000 bytes');
         expect(logged).toEqual(['Limits of the account could not be read, describing the standard ones: API error 500: Server Error']);
     });
@@ -339,7 +339,7 @@ describe('hosted MCP server: disabled tools', () => {
         const { result } = await (await rpc('tools/list', {})).json();
         const names = result.tools.map((tool) => tool.name);
 
-        expect(names).toHaveLength(25);
+        expect(names).toHaveLength(30);
         expect(names).not.toContain('documents_edit');
         expect(names).toContain('documents_get');
     });

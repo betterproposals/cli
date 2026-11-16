@@ -4,8 +4,9 @@ import { resetContextForTests, runWithContext } from './context.js';
 import { annotationsFor, buildTools, withoutPriceTables } from './tools.js';
 
 const WRITE_TOOLS = [
-    'companies_create', 'document_types_create', 'documents_block_pricing', 'documents_create',
-    'documents_create_cover', 'documents_edit', 'documents_edit_cover', 'documents_links',
+    'companies_create', 'document_types_create', 'documents_block_library', 'documents_block_pricing',
+    'documents_create', 'documents_create_cover', 'documents_edit', 'documents_edit_cover', 'documents_links',
+    'documents_pricing_table_library', 'documents_section_library',
 ];
 
 describe('buildTools', () => {
@@ -13,8 +14,8 @@ describe('buildTools', () => {
 
     test('exposes the API tools, without the ones only the local CLI has', () => {
         const names = tools.map((tool) => tool.name);
-        expect(names).toHaveLength(27);
-        expect(new Set(names).size).toBe(27);
+        expect(names).toHaveLength(32);
+        expect(new Set(names).size).toBe(32);
         expect(names).not.toContain('cli_status');
         expect(names).toContain('api_limits');
         expect(names).not.toContain('documents_send');
@@ -85,7 +86,7 @@ describe('src/core', () => {
 describe('disabled tools', () => {
     test('leaves out the named tools and keeps the rest', () => {
         const names = buildTools({ disabled: ['documents_edit', 'api_limits'] }).map((tool) => tool.name);
-        expect(names).toHaveLength(25);
+        expect(names).toHaveLength(30);
         expect(names).not.toContain('documents_edit');
         expect(names).not.toContain('api_limits');
     });

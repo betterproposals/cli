@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { companies, currencies, documents, documentTypes, getLimits, library, settings, templates } from './api.js';
-import { getCachedLimits, jsonLimitNote, valueLimitNote } from './limits.js';
-import { cliStatus } from './update.js';
+import { jsonLimitNote, valueLimitNote } from './limits.js';
 
 // Single source of truth for the tools exposed by the stdio MCP server
 // (`src/stdio/mcp.js`), the hosted MCP server (`src/http/server.js`) and the
@@ -487,6 +486,7 @@ const READ_TOOLS = new Set([
     'companies_list', 'companies_get',
     'document_types_list',
     'templates_list', 'templates_get',
+    'library_list', 'library_get',
     'api_limits',
 ]);
 
@@ -498,6 +498,9 @@ const WRITE_TOOLS = {
     documents_edit: { destructive: true },
     documents_edit_cover: { destructive: true },
     documents_block_pricing: { destructive: true },
+    documents_block_library: { destructive: false },
+    documents_section_library: { destructive: false },
+    documents_pricing_table_library: { destructive: false },
     documents_links: { destructive: true },
 };
 
