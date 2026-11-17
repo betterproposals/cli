@@ -72,7 +72,7 @@ describe('buildTools', () => {
 
 describe('src/core', () => {
     test('does not depend on the stdio or http entry points', () => {
-        const dir = new URL('.', import.meta.url).pathname;
+        const dir = import.meta.dir + '/';
         const files = readdirSync(dir).filter((file) => file.endsWith('.js') && !file.endsWith('.test.js'));
         expect(files.length).toBeGreaterThan(4);
 
