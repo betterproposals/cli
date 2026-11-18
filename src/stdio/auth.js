@@ -2,7 +2,7 @@ import open from 'open';
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { clearLimitsCache } from './limits.js';
+import { clearLimitsCache } from './limits-cache.js';
 
 const SERVICE = 'betterproposals-cli';
 const NAME = 'betterproposals-token';
