@@ -38,6 +38,7 @@ export function identityFromInternalToken(token) {
  * expires; concurrent calls for the same access token share one request; a
  * refusal is remembered briefly (`refusalMs`) so a bad token cannot be used to
  * hammer the main app. An unreachable endpoint is never remembered.
+ * forget(accessToken) drops the remembered session, for when the API refuses it.
  */
 export function createSwapClient({
     swapUrl,
@@ -102,9 +103,11 @@ export function createSwapClient({
         }
     }
 
+    const keyOf = (accessToken) => createHash('sha256').update(accessToken).digest('hex');
+
     return {
         exchange(accessToken) {
-            const key = createHash('sha256').update(accessToken).digest('hex');
+            const key = keyOf(accessToken);
 
             const entry = entries.get(key);
             if (entry && now() < entry.validUntil) return entry.promise;
@@ -126,6 +129,11 @@ export function createSwapClient({
             );
 
             return fresh.promise;
+        },
+
+        /** Drops what is remembered for the token, so the next exchange asks the main app again. */
+        forget(accessToken) {
+            entries.delete(keyOf(accessToken));
         },
 
         get size() {
