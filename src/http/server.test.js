@@ -24,11 +24,14 @@ const internalFor = (aid, tag = '') =>
 let swapCalls;
 let apiCalls;
 let handle;
+let revokedTokens;
 
-// access tokens: bpat_user3 and bpat_user4 are valid, bpat_trial is not eligible
+// access tokens: bpat_user3 and bpat_user4 are valid, bpat_trial is not eligible,
+// any in revokedTokens has been disconnected
 function fakeSwap(url, init) {
     swapCalls.push({ url, init });
     const token = new URLSearchParams(init.body).get('access_token');
+    if (revokedTokens.has(token)) return new Response(JSON.stringify({ error: 'invalid_token' }), { status: 401 });
     if (token === 'bpat_user3') return new Response(JSON.stringify({ internal_token: internalFor(3, swapCalls.length), expires_in: 300 }));
     if (token === 'bpat_user4') return new Response(JSON.stringify({ internal_token: internalFor(4, swapCalls.length), expires_in: 300 }));
     if (token === 'bpat_trial') return new Response(JSON.stringify({ error: 'account_not_eligible' }), { status: 403 });
@@ -50,6 +53,7 @@ function fakeApi(url, init) {
 beforeEach(() => {
     swapCalls = [];
     apiCalls = [];
+    revokedTokens = new Set();
     globalThis.fetch = async (url, init) => fakeApi(String(url), init);
     handle = createHandler(config, {
         swapClient: createSwapClient({ swapUrl: config.swapUrl, secret: config.swapSecret, fetchImpl: async (url, init) => fakeSwap(url, init) }),
@@ -228,6 +232,57 @@ describe('hosted MCP server: tools', () => {
         expect(response.status).toBe(200);
         expect(result.isError).toBe(true);
         expect(result.content[0].text).toContain('API error 403');
+    });
+});
+
+describe('hosted MCP server: a removed connection', () => {
+    // The API refuses an internal token whose grant is revoked, even one this server remembers
+    const apiRefusing = (refused) => async (url, init) => {
+        apiCalls.push({ url: String(url), init });
+        if (refused(init.headers.Authorization)) {
+            return new Response(JSON.stringify({ status: 'error', message: 'Invalid token' }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ status: 'success', data: [{ ID: 1 }] }));
+    };
+
+    test('stops at once: the API refusal makes the server ask the main app again, and the client gets a 401', async () => {
+        expect((await callTool('documents_list')).status).toBe(200);
+
+        revokedTokens.add('bpat_user3');
+        globalThis.fetch = apiRefusing(() => true);
+        const response = await callTool('documents_list');
+
+        expect(response.status).toBe(401);
+        expect(response.headers.get('www-authenticate')).toBe(`Bearer error="invalid_token", resource_metadata="${config.metadataUrl}"`);
+        expect(response.headers.get('access-control-allow-origin')).toBe('*');
+        expect(swapCalls).toHaveLength(2);
+
+        // The refusal is remembered: the next request does not reach the API
+        const calls = apiCalls.length;
+        expect((await callTool('documents_list')).status).toBe(401);
+        expect(apiCalls).toHaveLength(calls);
+    });
+
+    test('a refused token of a connection that is still active is swapped again and the call goes through', async () => {
+        globalThis.fetch = apiRefusing((auth) => auth === `Bearer ${internalFor(3, 1)}`);
+        const response = await callTool('documents_list');
+        const { result } = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(result.isError).toBeUndefined();
+        expect(swapCalls).toHaveLength(2);
+        expect(apiCalls.map((call) => call.init.headers.Authorization)).toEqual([`Bearer ${internalFor(3, 1)}`, `Bearer ${internalFor(3, 2)}`]);
+    });
+
+    test('an API that keeps refusing gives a tool error after one retry, not a loop', async () => {
+        globalThis.fetch = apiRefusing(() => true);
+        const response = await callTool('documents_list');
+        const { result } = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toBe('Invalid token');
+        expect(apiCalls).toHaveLength(2);
     });
 });
 

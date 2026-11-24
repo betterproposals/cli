@@ -97,6 +97,17 @@ describe('createSwapClient', () => {
         expect(state.calls).toHaveLength(2);
     });
 
+    test('a forgotten session is asked for again, other tokens are kept', async () => {
+        const state = setup((n) => ok(n));
+        await state.client.exchange('bpat_a');
+        await state.client.exchange('bpat_b');
+
+        state.client.forget('bpat_a');
+        expect((await state.client.exchange('bpat_a')).accountId).toBe(3);
+        await state.client.exchange('bpat_b');
+        expect(state.calls).toHaveLength(3);
+    });
+
     test('an account that is not eligible is told so', async () => {
         const state = setup(() => refused(403, 'account_not_eligible'));
         await expect(state.client.exchange('bpat_abc')).rejects.toMatchObject({ kind: 'not_eligible' });

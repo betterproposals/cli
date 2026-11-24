@@ -111,16 +111,27 @@ export function createHandler(config, { swapClient, limitsRegistry, rateLimiter 
                 { 'Retry-After': String(retryAfterSeconds) });
         }
 
+        // Set when the main app refuses the access token during this request
+        // (the connection was removed): the client then gets a 401, not a tool error.
+        let revoked = false;
+
         const context = {
             baseUrl: config.apiBaseUrl,
             headers: config.apiHeaders,
             // Asked again for every API call: a long tool call (a big document
             // split in many requests) outlives one internal token.
             getAuthHeaders: async () => {
-                const { internalToken } = await swap.exchange(accessToken);
-                return { Authorization: `Bearer ${internalToken}` };
+                try {
+                    const { internalToken } = await swap.exchange(accessToken);
+                    return { Authorization: `Bearer ${internalToken}` };
+                } catch (error) {
+                    if (error instanceof SwapError && error.kind === 'invalid_token') revoked = true;
+                    throw error;
+                }
             },
-            refreshAuth: null,
+            // The API refused the internal token: its grant may have been revoked
+            // since the token was remembered. The retry swaps again.
+            refreshAuth: async () => swap.forget(accessToken),
             limitsStore: limits.forAccount(session.accountId),
         };
 
@@ -134,6 +145,7 @@ export function createHandler(config, { swapClient, limitsRegistry, rateLimiter 
             await server.connect(transport);
             try {
                 const response = await transport.handleRequest(req);
+                if (revoked) return unauthorized('invalid_token', 'The access token is invalid or expired.');
                 for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
                 return response;
             } finally {
